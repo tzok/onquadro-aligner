@@ -238,7 +238,7 @@ def calculate_score(seq1, seq2, i, j, consecutive_g_count):
         return -1  # Mismatch penalty
 
 
-def align_sequences(seq1, seq2, num_alignments=5, score_threshold=0.8):
+def align_sequences(seq1, seq2, num_alignments=5, score_threshold=0.8, pre_computed_matrix=None):
     """
     Align two DNA/RNA sequences with emphasis on consecutive G matches.
 
@@ -249,6 +249,7 @@ def align_sequences(seq1, seq2, num_alignments=5, score_threshold=0.8):
         seq1, seq2: The sequences to align
         num_alignments: Maximum number of alignments to return
         score_threshold: Minimum score threshold as a fraction of optimal score (0.0-1.0)
+        pre_computed_matrix: Optional pre-computed score matrix to skip computation
 
     Returns:
         List of tuples (aligned_seq1, aligned_seq2, score) sorted by score
@@ -259,76 +260,94 @@ def align_sequences(seq1, seq2, num_alignments=5, score_threshold=0.8):
 
     # Initialize the scoring matrix and traceback matrix
     m, n = len(seq1), len(seq2)
-    score_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+    
+    if pre_computed_matrix is not None:
+        # Use the pre-computed matrix
+        score_matrix = pre_computed_matrix
+        optimal_score = score_matrix[m][n]
+    else:
+        # Compute the score matrix
+        score_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+        
+        # Initialize consecutive G tracking matrix
+        g_count_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
 
-    # Store all possible moves at each cell instead of just the best one
-    traceback = [[[] for _ in range(n + 1)] for _ in range(m + 1)]
+        # Initialize first row and column with gap penalties
+        for i in range(1, m + 1):
+            score_matrix[i][0] = score_matrix[i - 1][0] - 1
 
-    # Initialize consecutive G tracking matrix
-    g_count_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
-
-    # Initialize first row and column with gap penalties
-    for i in range(1, m + 1):
-        score_matrix[i][0] = score_matrix[i - 1][0] - 1
-        traceback[i][0].append(("up", score_matrix[i][0]))
-
-    for j in range(1, n + 1):
-        score_matrix[0][j] = score_matrix[0][j - 1] - 1
-        traceback[0][j].append(("left", score_matrix[0][j]))
-
-    # Fill the matrices
-    for i in range(1, m + 1):
         for j in range(1, n + 1):
-            # Check if we have consecutive Gs
-            consecutive_g_count = 0
-            if (
-                i > 1
-                and j > 1
-                and seq1[i - 2] == "G"
-                and seq2[j - 2] == "G"
-                and seq1[i - 1] == "G"
-                and seq2[j - 1] == "G"
-            ):
-                consecutive_g_count = g_count_matrix[i - 1][j - 1]
+            score_matrix[0][j] = score_matrix[0][j - 1] - 1
 
-            # Calculate scores for each possible move
-            if seq1[i - 1] == "G" and seq2[j - 1] == "G":
-                diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
-                    seq1, seq2, i - 1, j - 1, consecutive_g_count
-                )
-                # Update G count for this position
-                g_count_matrix[i][j] = g_count_matrix[i - 1][j - 1] + 1
-            else:
-                diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
-                    seq1, seq2, i - 1, j - 1, 0
-                )
-                g_count_matrix[i][j] = 0
+        # Fill the matrices
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                # Check if we have consecutive Gs
+                consecutive_g_count = 0
+                if (
+                    i > 1
+                    and j > 1
+                    and seq1[i - 2] == "G"
+                    and seq2[j - 2] == "G"
+                    and seq1[i - 1] == "G"
+                    and seq2[j - 1] == "G"
+                ):
+                    consecutive_g_count = g_count_matrix[i - 1][j - 1]
 
-            up_score = score_matrix[i - 1][j] - 1  # Gap in seq2
-            left_score = score_matrix[i][j - 1] - 1  # Gap in seq1
+                # Calculate scores for each possible move
+                if seq1[i - 1] == "G" and seq2[j - 1] == "G":
+                    diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
+                        seq1, seq2, i - 1, j - 1, consecutive_g_count
+                    )
+                    # Update G count for this position
+                    g_count_matrix[i][j] = g_count_matrix[i - 1][j - 1] + 1
+                else:
+                    diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
+                        seq1, seq2, i - 1, j - 1, 0
+                    )
+                    g_count_matrix[i][j] = 0
 
-            # Store all possible moves and their scores
-            moves = []
+                up_score = score_matrix[i - 1][j] - 1  # Gap in seq2
+                left_score = score_matrix[i][j - 1] - 1  # Gap in seq1
 
-            # Find the best score
-            best_score = max(diagonal_score, up_score, left_score)
-            score_matrix[i][j] = best_score
-
-            # Add all moves that are within threshold of the best score
-            if diagonal_score >= best_score * score_threshold:
-                moves.append(("diagonal", diagonal_score))
-            if up_score >= best_score * score_threshold:
-                moves.append(("up", up_score))
-            if left_score >= best_score * score_threshold:
-                moves.append(("left", left_score))
-
-            # Sort moves by score (highest first)
-            moves.sort(key=lambda x: x[1], reverse=True)
-            traceback[i][j] = moves
+                # Choose the best score
+                score_matrix[i][j] = max(diagonal_score, up_score, left_score)
+                
+        optimal_score = score_matrix[m][n]
+    
+    # Store all possible moves at each cell
+    traceback = [[[] for _ in range(n + 1)] for _ in range(m + 1)]
+    
+    # Compute the traceback matrix based on the score matrix
+    for i in range(m + 1):
+        for j in range(n + 1):
+            if i == 0 and j > 0:
+                traceback[i][j].append(("left", score_matrix[i][j]))
+            elif j == 0 and i > 0:
+                traceback[i][j].append(("up", score_matrix[i][j]))
+            elif i > 0 and j > 0:
+                # Calculate scores for each possible move
+                diagonal_score = score_matrix[i-1][j-1]
+                up_score = score_matrix[i-1][j]
+                left_score = score_matrix[i][j-1]
+                
+                # Find the best score at this position
+                best_score = score_matrix[i][j]
+                min_acceptable = best_score * score_threshold
+                
+                # Add moves that are within threshold
+                if i > 0 and j > 0 and diagonal_score + calculate_score(seq1, seq2, i-1, j-1, 0) >= min_acceptable:
+                    traceback[i][j].append(("diagonal", diagonal_score))
+                if i > 0 and up_score - 1 >= min_acceptable:
+                    traceback[i][j].append(("up", up_score))
+                if j > 0 and left_score - 1 >= min_acceptable:
+                    traceback[i][j].append(("left", left_score))
+                
+                # Sort moves by score (highest first)
+                traceback[i][j].sort(key=lambda x: x[1], reverse=True)
 
     # Generate multiple alignments using backtracking
     alignments = []
-    optimal_score = score_matrix[m][n]
     min_score_threshold = optimal_score * score_threshold
 
     # Use depth-first search to find multiple paths
@@ -614,6 +633,72 @@ def display_quadruplex_details(quadruplex):
             print(f"    Loop: {loop}")
 
 
+def compute_alignment_score_matrix(seq1, seq2):
+    """
+    Compute the alignment score matrix for two sequences.
+    
+    Args:
+        seq1, seq2: The sequences to align
+        
+    Returns:
+        Tuple of (score_matrix, optimal_score)
+    """
+    # Convert to uppercase for consistency
+    seq1 = seq1.upper()
+    seq2 = seq2.upper()
+
+    # Initialize the scoring matrix
+    m, n = len(seq1), len(seq2)
+    score_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+    
+    # Initialize consecutive G tracking matrix
+    g_count_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+
+    # Initialize first row and column with gap penalties
+    for i in range(1, m + 1):
+        score_matrix[i][0] = score_matrix[i - 1][0] - 1
+
+    for j in range(1, n + 1):
+        score_matrix[0][j] = score_matrix[0][j - 1] - 1
+
+    # Fill the matrices
+    for i in range(1, m + 1):
+        for j in range(1, n + 1):
+            # Check if we have consecutive Gs
+            consecutive_g_count = 0
+            if (
+                i > 1
+                and j > 1
+                and seq1[i - 2] == "G"
+                and seq2[j - 2] == "G"
+                and seq1[i - 1] == "G"
+                and seq2[j - 1] == "G"
+            ):
+                consecutive_g_count = g_count_matrix[i - 1][j - 1]
+
+            # Calculate scores for each possible move
+            if seq1[i - 1] == "G" and seq2[j - 1] == "G":
+                diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
+                    seq1, seq2, i - 1, j - 1, consecutive_g_count
+                )
+                # Update G count for this position
+                g_count_matrix[i][j] = g_count_matrix[i - 1][j - 1] + 1
+            else:
+                diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
+                    seq1, seq2, i - 1, j - 1, 0
+                )
+                g_count_matrix[i][j] = 0
+
+            up_score = score_matrix[i - 1][j] - 1  # Gap in seq2
+            left_score = score_matrix[i][j - 1] - 1  # Gap in seq1
+
+            # Choose the best score
+            score_matrix[i][j] = max(diagonal_score, up_score, left_score)
+    
+    # Return the score matrix and the optimal score
+    return score_matrix, score_matrix[m][n]
+
+
 def align_against_quadruplexes(
     sequence, quadruplexes, num_alignments=5, score_threshold=0.8
 ):
@@ -630,17 +715,45 @@ def align_against_quadruplexes(
         List of tuples (quadruplex, source_file, aligned_seq1, aligned_seq2, score)
         sorted by score (highest first)
     """
-    all_alignments = []
-
+    # First, compute score matrices for all quadruplexes
+    print("Computing alignment scores for all quadruplexes...")
+    
+    quad_scores = []
     for quad, source_file in quadruplexes:
-        # Align against the whole sequence
-        print(f"Aligning against sequence from {source_file}...")
-
-        # Align the sequence against the quadruplex sequence
+        # Compute score matrix and optimal score
+        score_matrix, optimal_score = compute_alignment_score_matrix(sequence, quad.sequence)
+        quad_scores.append((quad, source_file, score_matrix, optimal_score))
+    
+    # Find the best overall score
+    if not quad_scores:
+        return []
+        
+    best_overall_score = max(score for _, _, _, score in quad_scores)
+    min_acceptable_score = best_overall_score * score_threshold
+    
+    print(f"Best overall alignment score: {best_overall_score}")
+    print(f"Minimum acceptable score: {min_acceptable_score}")
+    
+    # Filter quadruplexes by score threshold
+    filtered_quads = [
+        (quad, source_file, score_matrix) 
+        for quad, source_file, score_matrix, score in quad_scores
+        if score >= min_acceptable_score
+    ]
+    
+    print(f"Found {len(filtered_quads)} quadruplexes with scores above threshold.")
+    
+    # Generate alignments only for filtered quadruplexes
+    all_alignments = []
+    
+    for quad, source_file, _ in filtered_quads:
+        print(f"Generating alignments for sequence from {source_file}...")
+        
+        # Align the sequence against the quadruplex sequence using pre-computed matrix
         alignments = align_sequences(
-            sequence, quad.sequence, num_alignments, score_threshold
+            sequence, quad.sequence, num_alignments, score_threshold, _
         )
-
+        
         # Add quadruplex and source information to each alignment
         for aligned_seq1, aligned_seq2, score in alignments:
             all_alignments.append(
@@ -653,10 +766,10 @@ def align_against_quadruplexes(
                     score,
                 )
             )
-
+    
     # Sort all alignments by score (highest first)
     all_alignments.sort(key=lambda x: x[5], reverse=True)
-
+    
     return all_alignments
 
 
