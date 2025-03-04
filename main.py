@@ -48,15 +48,15 @@ class QuadruplexDotBracket:
 
     def get_segments(self):
         """
-        Get the segments of the quadruplex (parts separated by '-').
+        Get the segments of the quadruplex (parts separated by '&').
 
         Returns:
             List of tuples (sequence_segment, structure_segment, chi_segment, loop_segment)
         """
-        seq_segments = self.sequence.split("-")
-        struct_segments = self.structure.split("-")
-        chi_segments = self.chi.split("-")
-        loop_segments = self.loop.split("-")
+        seq_segments = self.sequence.split("&")
+        struct_segments = self.structure.split("&")
+        chi_segments = self.chi.split("&")
+        loop_segments = self.loop.split("&")
 
         return list(zip(seq_segments, struct_segments, chi_segments, loop_segments))
 
@@ -139,25 +139,25 @@ def parse_quadruplex_object(data):
     """
     try:
         # Extract required fields
-        sequence = str(data.get("sequence", ""))
-        structure = str(data.get("structure", ""))
+        sequence = str(data.get("sequence", "")).replace('-', '&')
+        structure = str(data.get("structure", "")).replace('-', '&')
 
         # Handle chi field - ensure it's a string
         chi_data = data.get("chi", "")
         if not isinstance(chi_data, str):
-            chi = str(chi_data)
+            chi = str(chi_data).replace('-', '&')
         else:
-            chi = chi_data
+            chi = chi_data.replace('-', '&')
 
         # Handle loop field - ensure it's a string
         loop_data = data.get("loop", "")
         if not isinstance(loop_data, str):
             if isinstance(loop_data, list):
-                loop = "-".join(str(x) for x in loop_data)
+                loop = "&".join(str(x) for x in loop_data)
             else:
-                loop = str(loop_data)
+                loop = str(loop_data).replace('-', '&')
         else:
-            loop = loop_data
+            loop = loop_data.replace('-', '&')
 
         # Create and return the object
         return QuadruplexDotBracket(sequence, structure, chi, loop)
@@ -804,7 +804,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
         print(f"Source: {source_file}")
-        print(f"Quadruplex: {quad.sequence}")
+        print(f"Quadruplex: {quad.sequence.replace('&', '-')}")  # Convert back for display
 
         # Display the alignment
         print(f"Sequence:   {aligned_seq1}")
@@ -822,9 +822,9 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"            {match_line}")
         print(f"Quadruplex: {aligned_seq2}")
-        print(f"Structure:  {quad.structure}")
-        print(f"Chi:        {quad.chi}")
-        print(f"Loop:       {quad.loop}")
+        print(f"Structure:  {quad.structure.replace('&', '-')}")  # Convert back for display
+        print(f"Chi:        {quad.chi.replace('&', '-')}")  # Convert back for display
+        print(f"Loop:       {quad.loop.replace('&', '-')}")  # Convert back for display
 
 
 def main():
