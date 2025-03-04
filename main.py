@@ -822,9 +822,38 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"            {match_line}")
         print(f"Quadruplex: {aligned_seq2}")
-        print(f"Structure:  {quad.structure}")  # Keep ampersands
-        print(f"Chi:        {quad.chi}")  # Keep ampersands
-        print(f"Loop:       {quad.loop}")  # Keep ampersands
+        
+        # Align structure, chi and loop with the quadruplex sequence by adding gaps
+        aligned_structure = ""
+        aligned_chi = ""
+        aligned_loop = ""
+        
+        # Track position in the original quadruplex sequence
+        orig_pos = 0
+        
+        # For each character in the aligned quadruplex sequence
+        for char in aligned_seq2:
+            if char == '-':
+                # If it's a gap, add a gap to structure, chi and loop
+                aligned_structure += '-'
+                aligned_chi += '-'
+                aligned_loop += '-'
+            else:
+                # If it's not a gap, add the corresponding character from structure, chi and loop
+                if orig_pos < len(quad.structure):
+                    aligned_structure += quad.structure[orig_pos]
+                    aligned_chi += quad.chi[orig_pos]
+                    aligned_loop += quad.loop[orig_pos]
+                    orig_pos += 1
+                else:
+                    # Handle case where aligned sequence is longer than original
+                    aligned_structure += '?'
+                    aligned_chi += '?'
+                    aligned_loop += '?'
+        
+        print(f"Structure:  {aligned_structure}")
+        print(f"Chi:        {aligned_chi}")
+        print(f"Loop:       {aligned_loop}")
 
 
 def main():
