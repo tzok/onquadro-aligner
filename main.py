@@ -15,22 +15,25 @@ from typing import List, Optional
 @dataclass
 class QuadruplexDotBracket:
     """Class for storing quadruplex dot-bracket notation data."""
+
     sequence: str
     structure: str
     chi: str
     loop: str
-    
+
     def __str__(self):
         """String representation of the quadruplex."""
-        return (f"Sequence: {self.sequence}\n"
-                f"Structure: {self.structure}\n"
-                f"Chi: {self.chi}\n"
-                f"Loop: {self.loop}")
-    
+        return (
+            f"Sequence: {self.sequence}\n"
+            f"Structure: {self.structure}\n"
+            f"Chi: {self.chi}\n"
+            f"Loop: {self.loop}"
+        )
+
     def validate(self):
         """
         Validate that all fields have the same length and substring structure.
-        
+
         Returns:
             bool: True if valid, False otherwise
         """
@@ -38,55 +41,55 @@ class QuadruplexDotBracket:
         fields = [self.sequence, self.structure, self.chi, self.loop]
         if len(set(len(field) for field in fields)) != 1:
             return False
-            
+
         # Check if all fields have the same substring structure
         substrings = []
         for field in fields:
-            substrings.append(field.split('-'))
-            
+            substrings.append(field.split("-"))
+
         # Check if all fields have the same number of substrings
         if len(set(len(subs) for subs in substrings)) != 1:
             return False
-            
+
         # Check if corresponding substrings have the same length
         for i in range(len(substrings[0])):
             substring_lengths = [len(subs[i]) for subs in substrings]
             if len(set(substring_lengths)) != 1:
                 return False
-                
+
         return True
-    
+
     def get_segments(self):
         """
         Get the segments of the quadruplex (parts separated by '-').
-        
+
         Returns:
             List of tuples (sequence_segment, structure_segment, chi_segment, loop_segment)
         """
-        seq_segments = self.sequence.split('-')
-        struct_segments = self.structure.split('-')
-        chi_segments = self.chi.split('-')
-        loop_segments = self.loop.split('-')
-        
+        seq_segments = self.sequence.split("-")
+        struct_segments = self.structure.split("-")
+        chi_segments = self.chi.split("-")
+        loop_segments = self.loop.split("-")
+
         return list(zip(seq_segments, struct_segments, chi_segments, loop_segments))
 
 
 def read_quadruplex_json(file_path):
     """
     Read a JSON file containing quadruplexDotBracket objects.
-    
+
     Args:
         file_path: Path to the JSON file
-        
+
     Returns:
         List of QuadruplexDotBracket objects
     """
     try:
-        with open(file_path, 'r') as f:
+        with open(file_path, "r") as f:
             data = json.load(f)
-        
+
         quadruplexes = []
-        
+
         # Handle both single object and array of objects
         if isinstance(data, dict):
             # Single object
@@ -94,7 +97,9 @@ def read_quadruplex_json(file_path):
             if quad and quad.validate():
                 quadruplexes.append(quad)
             else:
-                print("Warning: Invalid quadruplex object found (fields have different lengths or substring structure)")
+                print(
+                    "Warning: Invalid quadruplex object found (fields have different lengths or substring structure)"
+                )
         elif isinstance(data, list):
             # Array of objects
             for item in data:
@@ -102,10 +107,12 @@ def read_quadruplex_json(file_path):
                 if quad and quad.validate():
                     quadruplexes.append(quad)
                 else:
-                    print("Warning: Invalid quadruplex object found (fields have different lengths or substring structure)")
-        
+                    print(
+                        "Warning: Invalid quadruplex object found (fields have different lengths or substring structure)"
+                    )
+
         return quadruplexes
-    
+
     except FileNotFoundError:
         print(f"Error: File '{file_path}' not found.")
         return []
@@ -120,38 +127,38 @@ def read_quadruplex_json(file_path):
 def parse_quadruplex_object(data):
     """
     Parse a single quadruplexDotBracket object from JSON data.
-    
+
     Args:
         data: Dictionary containing quadruplex data
-        
+
     Returns:
         QuadruplexDotBracket object or None if parsing fails
     """
     try:
         # Extract required fields
-        sequence = str(data.get('sequence', ''))
-        structure = str(data.get('structure', ''))
-        
+        sequence = str(data.get("sequence", ""))
+        structure = str(data.get("structure", ""))
+
         # Handle chi field - ensure it's a string
-        chi_data = data.get('chi', '')
+        chi_data = data.get("chi", "")
         if not isinstance(chi_data, str):
             chi = str(chi_data)
         else:
             chi = chi_data
-        
+
         # Handle loop field - ensure it's a string
-        loop_data = data.get('loop', '')
+        loop_data = data.get("loop", "")
         if not isinstance(loop_data, str):
             if isinstance(loop_data, list):
-                loop = '-'.join(str(x) for x in loop_data)
+                loop = "-".join(str(x) for x in loop_data)
             else:
                 loop = str(loop_data)
         else:
             loop = loop_data
-        
+
         # Create and return the object
         return QuadruplexDotBracket(sequence, structure, chi, loop)
-        
+
     except Exception as e:
         print(f"Error parsing quadruplex object: {str(e)}")
         return None
@@ -539,12 +546,12 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
 def display_quadruplex_details(quadruplex):
     """
     Display detailed information about a quadruplex, including segment analysis.
-    
+
     Args:
         quadruplex: QuadruplexDotBracket object
     """
     print(quadruplex)
-    
+
     # Display segment information
     segments = quadruplex.get_segments()
     if len(segments) > 1:
@@ -560,12 +567,12 @@ def display_quadruplex_details(quadruplex):
 def display_all_alignments(alignments):
     """
     Display multiple alignments with their scores.
-    
+
     Args:
         alignments: List of tuples (aligned_seq1, aligned_seq2, score)
     """
     print(f"\nFound {len(alignments)} alignment(s):")
-    
+
     for i, (aligned_seq1, aligned_seq2, score) in enumerate(alignments, 1):
         display_alignment(aligned_seq1, aligned_seq2, score, i)
 
@@ -578,7 +585,9 @@ def main():
     if args.json_file:
         quadruplexes = read_quadruplex_json(args.json_file)
         if quadruplexes:
-            print(f"Loaded {len(quadruplexes)} quadruplex structures from {args.json_file}")
+            print(
+                f"Loaded {len(quadruplexes)} quadruplex structures from {args.json_file}"
+            )
             for i, quad in enumerate(quadruplexes, 1):
                 print(f"\nQuadruplex #{i}:")
                 display_quadruplex_details(quad)
