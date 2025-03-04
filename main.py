@@ -119,7 +119,7 @@ def read_quadruplex_json(file_path):
                     quad = parse_quadruplex_object(quad_data)
                 else:
                     quad = parse_quadruplex_object(item)
-                
+
                 if quad and quad.validate():
                     quadruplexes.append(quad)
                 else:
@@ -597,23 +597,25 @@ def read_quadruplexes_from_directory(directory_path):
             try:
                 os.makedirs(directory_path)
                 print(f"Created directory '{directory_path}'.")
-                
+
                 # Create a sample JSON file for testing
-                sample_file_path = os.path.join(directory_path, "sample_quadruplex.json")
+                sample_file_path = os.path.join(
+                    directory_path, "sample_quadruplex.json"
+                )
                 sample_data = {
                     "quadruplexDotBracket": {
                         "sequence": "GGGAGGGTGGGGAGGGTGGGGAAGG",
                         "structure": "((([[[)))((([[[)))((([[[)))",
                         "chi": "1.5",
-                        "loop": "3,3,3"
+                        "loop": "3,3,3",
                     }
                 }
-                
-                with open(sample_file_path, 'w') as f:
+
+                with open(sample_file_path, "w") as f:
                     json.dump(sample_data, f, indent=2)
-                
+
                 print(f"Created sample file '{sample_file_path}' for testing.")
-                
+
                 # Now get the list of files (should be just the sample)
                 json_files = ["sample_quadruplex.json"]
             except Exception as e:
@@ -628,21 +630,23 @@ def read_quadruplexes_from_directory(directory_path):
             if not json_files:
                 print(f"Warning: No JSON files found in directory '{directory_path}'.")
                 # Create a sample JSON file for testing
-                sample_file_path = os.path.join(directory_path, "sample_quadruplex.json")
+                sample_file_path = os.path.join(
+                    directory_path, "sample_quadruplex.json"
+                )
                 sample_data = {
                     "quadruplexDotBracket": {
                         "sequence": "GGGAGGGTGGGGAGGGTGGGGAAGG",
                         "structure": "((([[[)))((([[[)))((([[[)))",
                         "chi": "1.5",
-                        "loop": "3,3,3"
+                        "loop": "3,3,3",
                     }
                 }
-                
-                with open(sample_file_path, 'w') as f:
+
+                with open(sample_file_path, "w") as f:
                     json.dump(sample_data, f, indent=2)
-                
+
                 print(f"Created sample file '{sample_file_path}' for testing.")
-                
+
                 # Now get the list of files (should be just the sample)
                 json_files = ["sample_quadruplex.json"]
 
