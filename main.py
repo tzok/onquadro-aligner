@@ -321,9 +321,10 @@ def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
 
             # Calculate score for this move
             # Check for exact match or T-U match
-            is_match = (seq1[i - 1] == seq2[j - 1] or 
-                       (seq1[i - 1] in "TU" and seq2[j - 1] in "TU"))
-            
+            is_match = seq1[i - 1] == seq2[j - 1] or (
+                seq1[i - 1] in "TU" and seq2[j - 1] in "TU"
+            )
+
             if is_match:  # Match
                 move_score = 2  # Basic match score
                 if is_g_match:
@@ -428,9 +429,10 @@ def calculate_alignment_score(aligned_seq1, aligned_seq2):
 
     for i in range(min(len(aligned_seq1), len(aligned_seq2))):
         # Check for exact match or T-U match
-        is_match = (aligned_seq1[i] == aligned_seq2[i] or 
-                   (aligned_seq1[i] in "TU" and aligned_seq2[i] in "TU"))
-        
+        is_match = aligned_seq1[i] == aligned_seq2[i] or (
+            aligned_seq1[i] in "TU" and aligned_seq2[i] in "TU"
+        )
+
         if is_match:
             # Match
             base_score = 2
@@ -477,9 +479,10 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
     for i in range(len(aligned_seq1)):
         if i < len(aligned_seq2):
             # Check for exact match or T-U match
-            is_match = (aligned_seq1[i] == aligned_seq2[i] or 
-                       (aligned_seq1[i] in "TU" and aligned_seq2[i] in "TU"))
-            
+            is_match = aligned_seq1[i] == aligned_seq2[i] or (
+                aligned_seq1[i] in "TU" and aligned_seq2[i] in "TU"
+            )
+
             if is_match:
                 if aligned_seq1[i] == "G" and aligned_seq2[i] == "G":
                     match_line += "*"  # Special indicator for G matches
@@ -674,9 +677,10 @@ def compute_alignment_score_matrix(seq1, seq2):
             # Calculate scores for each possible move
             if seq1[i - 1] == "G" and seq2[j - 1] == "G":
                 # Check for exact match or T-U match
-                is_match = (seq1[i - 1] == seq2[j - 1] or 
-                           (seq1[i - 1] in "TU" and seq2[j - 1] in "TU"))
-                
+                is_match = seq1[i - 1] == seq2[j - 1] or (
+                    seq1[i - 1] in "TU" and seq2[j - 1] in "TU"
+                )
+
                 if is_match:
                     diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
                         seq1, seq2, i - 1, j - 1, consecutive_g_count
@@ -840,9 +844,10 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
         for j in range(len(aligned_seq1)):
             if j < len(aligned_seq2):
                 # Check for exact match or T-U match
-                is_match = (aligned_seq1[j] == aligned_seq2[j] or 
-                           (aligned_seq1[j] in "TU" and aligned_seq2[j] in "TU"))
-                
+                is_match = aligned_seq1[j] == aligned_seq2[j] or (
+                    aligned_seq1[j] in "TU" and aligned_seq2[j] in "TU"
+                )
+
                 if is_match:
                     if aligned_seq1[j] == "G" and aligned_seq2[j] == "G":
                         match_line += "*"  # Special indicator for G matches
