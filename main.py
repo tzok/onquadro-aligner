@@ -236,6 +236,7 @@ def calculate_score(seq1, seq2, i, j, consecutive_g_count):
 def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
     """
     Align two DNA/RNA sequences with emphasis on consecutive G matches.
+    Treats T and U as matches.
 
     Uses dynamic programming with beam search to find multiple optimal and suboptimal
     alignments that maximize the score, with special consideration for G nucleotides.
@@ -319,7 +320,11 @@ def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
                 consecutive_g_bonus = g_count  # Bonus based on previous consecutive Gs
 
             # Calculate score for this move
-            if seq1[i - 1] == seq2[j - 1]:  # Match
+            # Check for exact match or T-U match
+            is_match = (seq1[i - 1] == seq2[j - 1] or 
+                       (seq1[i - 1] in "TU" and seq2[j - 1] in "TU"))
+            
+            if is_match:  # Match
                 move_score = 2  # Basic match score
                 if is_g_match:
                     move_score += 1 + consecutive_g_bonus  # G match bonus
@@ -410,7 +415,7 @@ def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
 def calculate_alignment_score(aligned_seq1, aligned_seq2):
     """
     Calculate the score for an alignment based on matches, mismatches, gaps,
-    and consecutive G bonuses.
+    and consecutive G bonuses. Treats T and U as matches.
 
     Args:
         aligned_seq1, aligned_seq2: The aligned sequences
@@ -422,10 +427,14 @@ def calculate_alignment_score(aligned_seq1, aligned_seq2):
     consecutive_g_count = 0
 
     for i in range(min(len(aligned_seq1), len(aligned_seq2))):
-        if aligned_seq1[i] == aligned_seq2[i]:
+        # Check for exact match or T-U match
+        is_match = (aligned_seq1[i] == aligned_seq2[i] or 
+                   (aligned_seq1[i] in "TU" and aligned_seq2[i] in "TU"))
+        
+        if is_match:
             # Match
             base_score = 2
-            if aligned_seq1[i] == "G":
+            if aligned_seq1[i] == "G" and aligned_seq2[i] == "G":
                 # G match bonus
                 base_score += 1
                 # Consecutive G bonus
@@ -447,6 +456,7 @@ def calculate_alignment_score(aligned_seq1, aligned_seq2):
 def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None):
     """
     Display a single alignment with match indicators and statistics.
+    Treats T and U as matches.
 
     Args:
         aligned_seq1, aligned_seq2: The aligned sequences
@@ -465,11 +475,18 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
     # Create a match line to show matches between sequences
     match_line = ""
     for i in range(len(aligned_seq1)):
-        if i < len(aligned_seq2) and aligned_seq1[i] == aligned_seq2[i]:
-            if aligned_seq1[i] == "G":
-                match_line += "*"  # Special indicator for G matches
+        if i < len(aligned_seq2):
+            # Check for exact match or T-U match
+            is_match = (aligned_seq1[i] == aligned_seq2[i] or 
+                       (aligned_seq1[i] in "TU" and aligned_seq2[i] in "TU"))
+            
+            if is_match:
+                if aligned_seq1[i] == "G" and aligned_seq2[i] == "G":
+                    match_line += "*"  # Special indicator for G matches
+                else:
+                    match_line += "|"  # Regular match
             else:
-                match_line += "|"  # Regular match
+                match_line += " "  # Mismatch or gap
         else:
             match_line += " "  # Mismatch or gap
 
@@ -613,6 +630,7 @@ def process_alignment(args):
 def compute_alignment_score_matrix(seq1, seq2):
     """
     Compute the alignment score matrix for two sequences.
+    Treats T and U as matches.
 
     Args:
         seq1, seq2: The sequences to align
@@ -655,9 +673,16 @@ def compute_alignment_score_matrix(seq1, seq2):
 
             # Calculate scores for each possible move
             if seq1[i - 1] == "G" and seq2[j - 1] == "G":
-                diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
-                    seq1, seq2, i - 1, j - 1, consecutive_g_count
-                )
+                # Check for exact match or T-U match
+                is_match = (seq1[i - 1] == seq2[j - 1] or 
+                           (seq1[i - 1] in "TU" and seq2[j - 1] in "TU"))
+                
+                if is_match:
+                    diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
+                        seq1, seq2, i - 1, j - 1, consecutive_g_count
+                    )
+                else:
+                    diagonal_score = score_matrix[i - 1][j - 1] - 1  # Mismatch penalty
                 # Update G count for this position
                 g_count_matrix[i][j] = g_count_matrix[i - 1][j - 1] + 1
             else:
@@ -771,6 +796,7 @@ def display_all_alignments(alignments):
 def display_ranked_alignments(ranked_alignments, top_n=10):
     """
     Display ranked alignments against quadruplexes.
+    Treats T and U as matches.
 
     Args:
         ranked_alignments: List of tuples (quadruplex, source_file, segment_num, aligned_seq1, aligned_seq2, score)
@@ -812,11 +838,18 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
         # Create a match line
         match_line = ""
         for j in range(len(aligned_seq1)):
-            if j < len(aligned_seq2) and aligned_seq1[j] == aligned_seq2[j]:
-                if aligned_seq1[j] == "G":
-                    match_line += "*"  # Special indicator for G matches
+            if j < len(aligned_seq2):
+                # Check for exact match or T-U match
+                is_match = (aligned_seq1[j] == aligned_seq2[j] or 
+                           (aligned_seq1[j] in "TU" and aligned_seq2[j] in "TU"))
+                
+                if is_match:
+                    if aligned_seq1[j] == "G" and aligned_seq2[j] == "G":
+                        match_line += "*"  # Special indicator for G matches
+                    else:
+                        match_line += "|"  # Regular match
                 else:
-                    match_line += "|"  # Regular match
+                    match_line += " "  # Mismatch or gap
             else:
                 match_line += " "  # Mismatch or gap
 
