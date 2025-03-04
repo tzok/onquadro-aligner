@@ -90,20 +90,36 @@ def read_quadruplex_json(file_path):
 
         quadruplexes = []
 
-        # Handle both single object and array of objects
+        # Handle different JSON structures
         if isinstance(data, dict):
-            # Single object
-            quad = parse_quadruplex_object(data)
-            if quad and quad.validate():
-                quadruplexes.append(quad)
+            # Check if the data contains a "quadruplexDotBracket" object
+            if "quadruplexDotBracket" in data:
+                quad_data = data["quadruplexDotBracket"]
+                quad = parse_quadruplex_object(quad_data)
+                if quad and quad.validate():
+                    quadruplexes.append(quad)
+                else:
+                    print(
+                        f"Warning: Invalid quadruplexDotBracket object found in {file_path} (fields have different lengths or substring structure)"
+                    )
             else:
-                print(
-                    f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths or substring structure)"
-                )
+                # Try to parse as a direct quadruplex object
+                quad = parse_quadruplex_object(data)
+                if quad and quad.validate():
+                    quadruplexes.append(quad)
+                else:
+                    print(
+                        f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths or substring structure)"
+                    )
         elif isinstance(data, list):
-            # Array of objects
+            # Array of objects - could be array of quadruplexDotBracket containers or direct objects
             for item in data:
-                quad = parse_quadruplex_object(item)
+                if isinstance(item, dict) and "quadruplexDotBracket" in item:
+                    quad_data = item["quadruplexDotBracket"]
+                    quad = parse_quadruplex_object(quad_data)
+                else:
+                    quad = parse_quadruplex_object(item)
+                
                 if quad and quad.validate():
                     quadruplexes.append(quad)
                 else:
@@ -570,16 +586,58 @@ def read_quadruplexes_from_directory(directory_path):
         # Check if directory exists
         if not os.path.isdir(directory_path):
             print(f"Error: Directory '{directory_path}' not found.")
-            return []
+            # Create the directory for the user
+            try:
+                os.makedirs(directory_path)
+                print(f"Created directory '{directory_path}'.")
+                
+                # Create a sample JSON file for testing
+                sample_file_path = os.path.join(directory_path, "sample_quadruplex.json")
+                sample_data = {
+                    "quadruplexDotBracket": {
+                        "sequence": "GGGAGGGTGGGGAGGGTGGGGAAGG",
+                        "structure": "((([[[)))((([[[)))((([[[)))",
+                        "chi": "1.5",
+                        "loop": "3,3,3"
+                    }
+                }
+                
+                with open(sample_file_path, 'w') as f:
+                    json.dump(sample_data, f, indent=2)
+                
+                print(f"Created sample file '{sample_file_path}' for testing.")
+                
+                # Now get the list of files (should be just the sample)
+                json_files = ["sample_quadruplex.json"]
+            except Exception as e:
+                print(f"Could not create directory: {str(e)}")
+                return []
+        else:
+            # Get all JSON files in the directory
+            json_files = [
+                f for f in os.listdir(directory_path) if f.lower().endswith(".json")
+            ]
 
-        # Get all JSON files in the directory
-        json_files = [
-            f for f in os.listdir(directory_path) if f.lower().endswith(".json")
-        ]
-
-        if not json_files:
-            print(f"Warning: No JSON files found in directory '{directory_path}'.")
-            return []
+            if not json_files:
+                print(f"Warning: No JSON files found in directory '{directory_path}'.")
+                # Create a sample JSON file for testing
+                sample_file_path = os.path.join(directory_path, "sample_quadruplex.json")
+                sample_data = {
+                    "quadruplexDotBracket": {
+                        "sequence": "GGGAGGGTGGGGAGGGTGGGGAAGG",
+                        "structure": "((([[[)))((([[[)))((([[[)))",
+                        "chi": "1.5",
+                        "loop": "3,3,3"
+                    }
+                }
+                
+                with open(sample_file_path, 'w') as f:
+                    json.dump(sample_data, f, indent=2)
+                
+                print(f"Created sample file '{sample_file_path}' for testing.")
+                
+                # Now get the list of files (should be just the sample)
+                json_files = ["sample_quadruplex.json"]
 
         print(f"Found {len(json_files)} JSON files in '{directory_path}'.")
 
