@@ -180,13 +180,6 @@ def parse_arguments():
         required=True,
     )
     parser.add_argument(
-        "-n",
-        "--num-alignments",
-        type=int,
-        default=5,
-        help="Number of alignments to generate per quadruplex (default: 5)",
-    )
-    parser.add_argument(
         "-s",
         "--score-threshold",
         type=float,
@@ -241,7 +234,7 @@ def calculate_score(seq1, seq2, i, j, consecutive_g_count):
 
 
 def align_sequences(
-    seq1, seq2, num_alignments=5, score_threshold=0.8, pre_computed_matrix=None
+    seq1, seq2, score_threshold=0.8, pre_computed_matrix=None
 ):
     """
     Align two DNA/RNA sequences with emphasis on consecutive G matches.
@@ -251,7 +244,6 @@ def align_sequences(
 
     Args:
         seq1, seq2: The sequences to align
-        num_alignments: Maximum number of alignments to return
         score_threshold: Minimum score threshold as a fraction of optimal score (0.0-1.0)
         pre_computed_matrix: Optional pre-computed score matrix to skip computation
 
@@ -292,15 +284,11 @@ def align_sequences(
     complete_alignments = []
 
     # Beam search parameters
-    beam_width = max(num_alignments * 3, 20)  # Keep this many paths at each step
+    beam_width = 50  # Keep this many paths at each step
     max_iterations = m * n * 2  # Limit total iterations to avoid excessive computation
 
     iteration = 0
-    while (
-        beam
-        and iteration < max_iterations
-        and len(complete_alignments) < num_alignments * 3
-    ):
+    while beam and iteration < max_iterations:
         iteration += 1
 
         # Get the current state
@@ -315,9 +303,6 @@ def align_sequences(
             # Add to complete alignments
             complete_alignments.append((aligned_seq1, aligned_seq2, current_score))
 
-            # If we have enough alignments, we can stop
-            if len(complete_alignments) >= num_alignments * 3:
-                break
 
             # Continue to process other paths
             continue
@@ -422,9 +407,6 @@ def align_sequences(
             seen.add(alignment_key)
             unique_alignments.append((aligned_seq1, aligned_seq2, score))
 
-            # Stop if we have enough unique alignments
-            if len(unique_alignments) >= num_alignments:
-                break
 
     return unique_alignments
 
@@ -615,16 +597,16 @@ def process_alignment(args):
     This function is designed to be used with multiprocessing.
 
     Args:
-        args: Tuple containing (sequence, quad, source_file, score_matrix, num_alignments, score_threshold)
+        args: Tuple containing (sequence, quad, source_file, score_matrix, score_threshold)
 
     Returns:
         List of tuples (quad, source_file, 0, aligned_seq1, aligned_seq2, score)
     """
-    sequence, quad, source_file, score_matrix, num_alignments, score_threshold = args
+    sequence, quad, source_file, score_matrix, score_threshold = args
 
     # Align the sequence against the quadruplex sequence using pre-computed matrix
     alignments = align_sequences(
-        sequence, quad.sequence, num_alignments, score_threshold, score_matrix
+        sequence, quad.sequence, score_threshold, score_matrix
     )
 
     # Add quadruplex and source information to each alignment
@@ -701,7 +683,7 @@ def compute_alignment_score_matrix(seq1, seq2):
 
 
 def align_against_quadruplexes(
-    sequence, quadruplexes, num_alignments=5, score_threshold=0.8
+    sequence, quadruplexes, score_threshold=0.8
 ):
     """
     Align a sequence against all quadruplex sequences and rank the results.
@@ -710,7 +692,6 @@ def align_against_quadruplexes(
     Args:
         sequence: The sequence to align
         quadruplexes: List of tuples (quadruplex, source_file)
-        num_alignments: Number of alignments to generate per quadruplex
         score_threshold: Score threshold for alignments
 
     Returns:
@@ -766,7 +747,7 @@ def align_against_quadruplexes(
 
         # Prepare arguments for parallel processing
         alignment_args = [
-            (sequence, quad, source_file, score_matrix, num_alignments, score_threshold)
+            (sequence, quad, source_file, score_matrix, score_threshold)
             for quad, source_file, score_matrix in filtered_quads
         ]
 
@@ -885,11 +866,11 @@ def main():
     # Align sequence against all quadruplexes
     print(f"Aligning sequence against {len(quadruplexes)} quadruplex structures...")
     print(
-        f"Using parameters: num_alignments={args.num_alignments}, score_threshold={args.score_threshold}"
+        f"Using parameters: score_threshold={args.score_threshold}"
     )
 
     ranked_alignments = align_against_quadruplexes(
-        sequence, quadruplexes, args.num_alignments, args.score_threshold
+        sequence, quadruplexes, args.score_threshold
     )
 
     # Display top ranked alignments
