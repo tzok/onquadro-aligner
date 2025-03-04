@@ -595,15 +595,17 @@ def process_quadruplex(args):
     """
     Process a single quadruplex for alignment score computation.
     This function is designed to be used with multiprocessing.
-    
+
     Args:
         args: Tuple containing (sequence, quad, source_file)
-        
+
     Returns:
         Tuple of (quad, source_file, score_matrix, optimal_score)
     """
     sequence, quad, source_file = args
-    score_matrix, optimal_score = compute_alignment_score_matrix(sequence, quad.sequence)
+    score_matrix, optimal_score = compute_alignment_score_matrix(
+        sequence, quad.sequence
+    )
     return (quad, source_file, score_matrix, optimal_score)
 
 
@@ -611,20 +613,20 @@ def process_alignment(args):
     """
     Process a single quadruplex for alignment generation.
     This function is designed to be used with multiprocessing.
-    
+
     Args:
         args: Tuple containing (sequence, quad, source_file, score_matrix, num_alignments, score_threshold)
-        
+
     Returns:
         List of tuples (quad, source_file, 0, aligned_seq1, aligned_seq2, score)
     """
     sequence, quad, source_file, score_matrix, num_alignments, score_threshold = args
-    
+
     # Align the sequence against the quadruplex sequence using pre-computed matrix
     alignments = align_sequences(
         sequence, quad.sequence, num_alignments, score_threshold, score_matrix
     )
-    
+
     # Add quadruplex and source information to each alignment
     return [
         (quad, source_file, 0, aligned_seq1, aligned_seq2, score)
@@ -719,12 +721,14 @@ def align_against_quadruplexes(
     num_processes = min(multiprocessing.cpu_count(), len(quadruplexes))
     if num_processes < 1:
         num_processes = 1
-    
-    print(f"Computing alignment scores for all quadruplexes using {num_processes} processes...")
+
+    print(
+        f"Computing alignment scores for all quadruplexes using {num_processes} processes..."
+    )
 
     # Prepare arguments for parallel processing
     process_args = [(sequence, quad, source_file) for quad, source_file in quadruplexes]
-    
+
     # Compute score matrices in parallel
     quad_scores = []
     with ProcessPoolExecutor(max_workers=num_processes) as executor:
@@ -756,21 +760,21 @@ def align_against_quadruplexes(
     # Generate alignments in parallel for filtered quadruplexes
     all_alignments = []
     total_quads = len(filtered_quads)
-    
+
     if total_quads > 0:
         print(f"Generating alignments in parallel using {num_processes} processes...")
-        
+
         # Prepare arguments for parallel processing
         alignment_args = [
             (sequence, quad, source_file, score_matrix, num_alignments, score_threshold)
             for quad, source_file, score_matrix in filtered_quads
         ]
-        
+
         with ProcessPoolExecutor(max_workers=num_processes) as executor:
             for i, result in enumerate(executor.map(process_alignment, alignment_args)):
                 all_alignments.extend(result)
                 # Show progress
-                print(f"  Processed alignments for quadruplex {i+1}/{total_quads}")
+                print(f"  Processed alignments for quadruplex {i + 1}/{total_quads}")
 
     # Sort all alignments by score (highest first)
     all_alignments.sort(key=lambda x: x[5], reverse=True)
@@ -851,9 +855,9 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 def main():
     """Main function to run the alignment tool."""
     # Set multiprocessing start method
-    if sys.platform == 'darwin':  # macOS
-        multiprocessing.set_start_method('spawn', force=True)
-    
+    if sys.platform == "darwin":  # macOS
+        multiprocessing.set_start_method("spawn", force=True)
+
     args = parse_arguments()
 
     # Get the sequence to align
