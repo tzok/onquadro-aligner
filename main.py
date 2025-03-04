@@ -8,8 +8,10 @@ This program aligns two DNA or RNA sequences provided as command line arguments.
 import sys
 import argparse
 import json
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -589,6 +591,47 @@ def display_quadruplex_details(quadruplex):
             print(f"    Loop: {loop}")
 
 
+def process_quadruplex(args):
+    """
+    Process a single quadruplex for alignment score computation.
+    This function is designed to be used with multiprocessing.
+    
+    Args:
+        args: Tuple containing (sequence, quad, source_file)
+        
+    Returns:
+        Tuple of (quad, source_file, score_matrix, optimal_score)
+    """
+    sequence, quad, source_file = args
+    score_matrix, optimal_score = compute_alignment_score_matrix(sequence, quad.sequence)
+    return (quad, source_file, score_matrix, optimal_score)
+
+
+def process_alignment(args):
+    """
+    Process a single quadruplex for alignment generation.
+    This function is designed to be used with multiprocessing.
+    
+    Args:
+        args: Tuple containing (sequence, quad, source_file, score_matrix, num_alignments, score_threshold)
+        
+    Returns:
+        List of tuples (quad, source_file, 0, aligned_seq1, aligned_seq2, score)
+    """
+    sequence, quad, source_file, score_matrix, num_alignments, score_threshold = args
+    
+    # Align the sequence against the quadruplex sequence using pre-computed matrix
+    alignments = align_sequences(
+        sequence, quad.sequence, num_alignments, score_threshold, score_matrix
+    )
+    
+    # Add quadruplex and source information to each alignment
+    return [
+        (quad, source_file, 0, aligned_seq1, aligned_seq2, score)
+        for aligned_seq1, aligned_seq2, score in alignments
+    ]
+
+
 def compute_alignment_score_matrix(seq1, seq2):
     """
     Compute the alignment score matrix for two sequences.
@@ -660,6 +703,7 @@ def align_against_quadruplexes(
 ):
     """
     Align a sequence against all quadruplex sequences and rank the results.
+    Uses parallel processing to speed up computation.
 
     Args:
         sequence: The sequence to align
@@ -671,20 +715,24 @@ def align_against_quadruplexes(
         List of tuples (quadruplex, source_file, aligned_seq1, aligned_seq2, score)
         sorted by score (highest first)
     """
-    # First, compute score matrices for all quadruplexes
-    print("Computing alignment scores for all quadruplexes...")
+    # Determine the number of processes to use
+    num_processes = min(multiprocessing.cpu_count(), len(quadruplexes))
+    if num_processes < 1:
+        num_processes = 1
+    
+    print(f"Computing alignment scores for all quadruplexes using {num_processes} processes...")
 
+    # Prepare arguments for parallel processing
+    process_args = [(sequence, quad, source_file) for quad, source_file in quadruplexes]
+    
+    # Compute score matrices in parallel
     quad_scores = []
-    for i, (quad, source_file) in enumerate(quadruplexes):
-        # Show progress
-        if i % 10 == 0 and i > 0:
-            print(f"  Processed {i}/{len(quadruplexes)} quadruplexes...")
-
-        # Compute score matrix and optimal score
-        score_matrix, optimal_score = compute_alignment_score_matrix(
-            sequence, quad.sequence
-        )
-        quad_scores.append((quad, source_file, score_matrix, optimal_score))
+    with ProcessPoolExecutor(max_workers=num_processes) as executor:
+        for i, result in enumerate(executor.map(process_quadruplex, process_args)):
+            quad_scores.append(result)
+            # Show progress
+            if i % 10 == 0 and i > 0:
+                print(f"  Processed {i}/{len(quadruplexes)} quadruplexes...")
 
     # Find the best overall score
     if not quad_scores:
@@ -705,32 +753,24 @@ def align_against_quadruplexes(
 
     print(f"Found {len(filtered_quads)} quadruplexes with scores above threshold.")
 
-    # Generate alignments only for filtered quadruplexes
+    # Generate alignments in parallel for filtered quadruplexes
     all_alignments = []
     total_quads = len(filtered_quads)
-
-    for i, (quad, source_file, score_matrix) in enumerate(filtered_quads):
-        print(
-            f"Generating alignments for sequence from {source_file}... ({i + 1}/{total_quads})"
-        )
-
-        # Align the sequence against the quadruplex sequence using pre-computed matrix
-        alignments = align_sequences(
-            sequence, quad.sequence, num_alignments, score_threshold, score_matrix
-        )
-
-        # Add quadruplex and source information to each alignment
-        for aligned_seq1, aligned_seq2, score in alignments:
-            all_alignments.append(
-                (
-                    quad,
-                    source_file,
-                    0,  # No segment number
-                    aligned_seq1,
-                    aligned_seq2,
-                    score,
-                )
-            )
+    
+    if total_quads > 0:
+        print(f"Generating alignments in parallel using {num_processes} processes...")
+        
+        # Prepare arguments for parallel processing
+        alignment_args = [
+            (sequence, quad, source_file, score_matrix, num_alignments, score_threshold)
+            for quad, source_file, score_matrix in filtered_quads
+        ]
+        
+        with ProcessPoolExecutor(max_workers=num_processes) as executor:
+            for i, result in enumerate(executor.map(process_alignment, alignment_args)):
+                all_alignments.extend(result)
+                # Show progress
+                print(f"  Processed alignments for quadruplex {i+1}/{total_quads}")
 
     # Sort all alignments by score (highest first)
     all_alignments.sort(key=lambda x: x[5], reverse=True)
@@ -810,6 +850,10 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
 def main():
     """Main function to run the alignment tool."""
+    # Set multiprocessing start method
+    if sys.platform == 'darwin':  # macOS
+        multiprocessing.set_start_method('spawn', force=True)
+    
     args = parse_arguments()
 
     # Get the sequence to align
