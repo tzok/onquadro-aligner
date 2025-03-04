@@ -822,7 +822,14 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
         aligned_seq2,
         score,
     ) in enumerate(results_to_display, 1):
-        print(f"\nRank #{i} (Score: {score}):")
+        # Count G matches
+        g_matches = sum(
+            1
+            for j in range(min(len(aligned_seq1), len(aligned_seq2)))
+            if aligned_seq1[j] == "G" and aligned_seq2[j] == "G"
+        )
+        
+        print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
         print(f"Source: {source_file}")
         print(f"Quadruplex: {quad.sequence}")
 
@@ -842,14 +849,9 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"            {match_line}")
         print(f"Quadruplex: {aligned_seq2}")
-
-        # Count G matches
-        g_matches = sum(
-            1
-            for j in range(min(len(aligned_seq1), len(aligned_seq2)))
-            if aligned_seq1[j] == "G" and aligned_seq2[j] == "G"
-        )
-        print(f"G matches: {g_matches}")
+        print(f"Structure:  {quad.structure}")
+        print(f"Chi:        {quad.chi}")
+        print(f"Loop:       {quad.loop}")
 
 
 def main():
