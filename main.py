@@ -564,7 +564,7 @@ def read_quadruplexes_from_directory(directory_path):
         if not os.path.isdir(directory_path):
             print(f"Error: Directory '{directory_path}' not found.")
             return []
-        
+
         # Get all JSON files in the directory
         json_files = [
             f for f in os.listdir(directory_path) if f.lower().endswith(".json")
