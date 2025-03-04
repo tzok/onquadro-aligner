@@ -510,10 +510,7 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
     # Create a match line to show matches between sequences
     match_line = ""
     for i in range(len(aligned_seq1)):
-        if (
-            i < len(aligned_seq2)
-            and aligned_seq1[i] == aligned_seq2[i]
-        ):
+        if i < len(aligned_seq2) and aligned_seq1[i] == aligned_seq2[i]:
             if aligned_seq1[i] == "G":
                 match_line += "*"  # Special indicator for G matches
             else:
@@ -684,7 +681,7 @@ def align_against_quadruplexes(
     for quad, source_file in quadruplexes:
         # Align against the whole sequence
         print(f"Aligning against sequence from {source_file}...")
-        
+
         # Align the sequence against the quadruplex sequence
         alignments = align_sequences(
             sequence, quad.sequence, num_alignments, score_threshold
@@ -759,10 +756,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
         # Create a match line
         match_line = ""
         for j in range(len(aligned_seq1)):
-            if (
-                j < len(aligned_seq2)
-                and aligned_seq1[j] == aligned_seq2[j]
-            ):
+            if j < len(aligned_seq2) and aligned_seq1[j] == aligned_seq2[j]:
                 if aligned_seq1[j] == "G":
                     match_line += "*"  # Special indicator for G matches
                 else:
