@@ -804,9 +804,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
         print(f"Source: {source_file}")
-        print(
-            f"Quadruplex: {quad.sequence.replace('&', '-')}"
-        )  # Convert back for display
+        print(f"Quadruplex: {quad.sequence}")  # Keep ampersands
 
         # Display the alignment
         print(f"Sequence:   {aligned_seq1}")
@@ -824,11 +822,9 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"            {match_line}")
         print(f"Quadruplex: {aligned_seq2}")
-        print(
-            f"Structure:  {quad.structure.replace('&', '-')}"
-        )  # Convert back for display
-        print(f"Chi:        {quad.chi.replace('&', '-')}")  # Convert back for display
-        print(f"Loop:       {quad.loop.replace('&', '-')}")  # Convert back for display
+        print(f"Structure:  {quad.structure}")  # Keep ampersands
+        print(f"Chi:        {quad.chi}")  # Keep ampersands
+        print(f"Loop:       {quad.loop}")  # Keep ampersands
 
 
 def main():
