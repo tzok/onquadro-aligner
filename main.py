@@ -7,6 +7,96 @@ This program aligns two DNA or RNA sequences provided as command line arguments.
 
 import sys
 import argparse
+import json
+from dataclasses import dataclass
+from typing import List, Optional
+
+
+@dataclass
+class QuadruplexDotBracket:
+    """Class for storing quadruplex dot-bracket notation data."""
+    sequence: str
+    structure: str
+    chi: float
+    loop: List[int]
+    
+    def __str__(self):
+        """String representation of the quadruplex."""
+        return (f"Sequence: {self.sequence}\n"
+                f"Structure: {self.structure}\n"
+                f"Chi: {self.chi}\n"
+                f"Loop: {self.loop}")
+
+
+def read_quadruplex_json(file_path):
+    """
+    Read a JSON file containing quadruplexDotBracket objects.
+    
+    Args:
+        file_path: Path to the JSON file
+        
+    Returns:
+        List of QuadruplexDotBracket objects
+    """
+    try:
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        quadruplexes = []
+        
+        # Handle both single object and array of objects
+        if isinstance(data, dict):
+            # Single object
+            quadruplexes.append(parse_quadruplex_object(data))
+        elif isinstance(data, list):
+            # Array of objects
+            for item in data:
+                quadruplexes.append(parse_quadruplex_object(item))
+        
+        return quadruplexes
+    
+    except FileNotFoundError:
+        print(f"Error: File '{file_path}' not found.")
+        return []
+    except json.JSONDecodeError:
+        print(f"Error: File '{file_path}' contains invalid JSON.")
+        return []
+    except Exception as e:
+        print(f"Error reading quadruplex data: {str(e)}")
+        return []
+
+
+def parse_quadruplex_object(data):
+    """
+    Parse a single quadruplexDotBracket object from JSON data.
+    
+    Args:
+        data: Dictionary containing quadruplex data
+        
+    Returns:
+        QuadruplexDotBracket object
+    """
+    # Extract required fields with validation
+    sequence = data.get('sequence', '')
+    structure = data.get('structure', '')
+    chi = float(data.get('chi', 0.0))
+    
+    # Handle loop field which could be a list or a string representation of a list
+    loop_data = data.get('loop', [])
+    if isinstance(loop_data, str):
+        # Try to parse string representation of a list
+        try:
+            # Remove brackets and split by commas
+            loop_data = loop_data.strip('[]').split(',')
+            loop = [int(x.strip()) for x in loop_data if x.strip()]
+        except ValueError:
+            print(f"Warning: Could not parse loop data '{loop_data}', using empty list.")
+            loop = []
+    else:
+        # Assume it's already a list
+        loop = [int(x) for x in loop_data]
+    
+    return QuadruplexDotBracket(sequence, structure, chi, loop)
 
 
 def parse_arguments():
@@ -27,6 +117,11 @@ def parse_arguments():
         type=float,
         default=0.8,
         help="Score threshold as a fraction of the optimal score (0.0-1.0, default: 0.8)",
+    )
+    parser.add_argument(
+        "-j",
+        "--json-file",
+        help="Path to JSON file containing quadruplex data",
     )
     return parser.parse_args()
 
@@ -399,6 +494,16 @@ def display_all_alignments(alignments):
 def main():
     """Main function to run the alignment tool."""
     args = parse_arguments()
+
+    # Check if JSON file was provided
+    if args.json_file:
+        quadruplexes = read_quadruplex_json(args.json_file)
+        if quadruplexes:
+            print(f"Loaded {len(quadruplexes)} quadruplex structures from {args.json_file}")
+            for i, quad in enumerate(quadruplexes, 1):
+                print(f"\nQuadruplex #{i}:")
+                print(quad)
+            return
 
     # Get sequences from command line arguments
     seq1 = args.seq1
