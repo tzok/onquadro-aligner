@@ -320,7 +320,7 @@ def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
                 consecutive_g_bonus = g_count  # Bonus based on previous consecutive Gs
 
             # Check for ampersand in either sequence - penalize more heavily
-            if seq1[i - 1] == '&' or seq2[j - 1] == '&':
+            if seq1[i - 1] == "&" or seq2[j - 1] == "&":
                 move_score = -3  # Higher penalty for ampersand
             else:
                 # Calculate score for this move
@@ -434,11 +434,11 @@ def calculate_alignment_score(aligned_seq1, aligned_seq2):
 
     for i in range(min(len(aligned_seq1), len(aligned_seq2))):
         # Check for ampersand in either sequence - penalize more heavily
-        if aligned_seq1[i] == '&' or aligned_seq2[i] == '&':
+        if aligned_seq1[i] == "&" or aligned_seq2[i] == "&":
             score -= 3  # Higher penalty for ampersand
             consecutive_g_count = 0
             continue
-            
+
         # Check for exact match or T-U match
         is_match = aligned_seq1[i] == aligned_seq2[i] or (
             aligned_seq1[i] in "TU" and aligned_seq2[i] in "TU"
@@ -688,8 +688,10 @@ def compute_alignment_score_matrix(seq1, seq2):
             # Calculate scores for each possible move
             if seq1[i - 1] == "G" and seq2[j - 1] == "G":
                 # Check for ampersand in either sequence
-                if seq1[i - 1] == '&' or seq2[j - 1] == '&':
-                    diagonal_score = score_matrix[i - 1][j - 1] - 3  # Higher penalty for ampersand
+                if seq1[i - 1] == "&" or seq2[j - 1] == "&":
+                    diagonal_score = (
+                        score_matrix[i - 1][j - 1] - 3
+                    )  # Higher penalty for ampersand
                 else:
                     # Check for exact match or T-U match
                     is_match = seq1[i - 1] == seq2[j - 1] or (
@@ -701,7 +703,9 @@ def compute_alignment_score_matrix(seq1, seq2):
                             seq1, seq2, i - 1, j - 1, consecutive_g_count
                         )
                     else:
-                        diagonal_score = score_matrix[i - 1][j - 1] - 1  # Mismatch penalty
+                        diagonal_score = (
+                            score_matrix[i - 1][j - 1] - 1
+                        )  # Mismatch penalty
                 # Update G count for this position
                 g_count_matrix[i][j] = g_count_matrix[i - 1][j - 1] + 1
             else:
