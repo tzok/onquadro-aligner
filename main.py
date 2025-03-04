@@ -244,8 +244,8 @@ def align_sequences(
     """
     Align two DNA/RNA sequences with emphasis on consecutive G matches.
 
-    Uses dynamic programming to find multiple optimal and suboptimal alignments
-    that maximize the score, with special consideration for G nucleotides.
+    Uses dynamic programming with beam search to find multiple optimal and suboptimal
+    alignments that maximize the score, with special consideration for G nucleotides.
 
     Args:
         seq1, seq2: The sequences to align
@@ -260,7 +260,7 @@ def align_sequences(
     seq1 = seq1.upper()
     seq2 = seq2.upper()
 
-    # Initialize the scoring matrix and traceback matrix
+    # Initialize the scoring matrix
     m, n = len(seq1), len(seq2)
 
     if pre_computed_matrix is not None:
@@ -269,200 +269,136 @@ def align_sequences(
         optimal_score = score_matrix[m][n]
     else:
         # Compute the score matrix
-        score_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+        score_matrix, optimal_score = compute_alignment_score_matrix(seq1, seq2)
 
-        # Initialize consecutive G tracking matrix
-        g_count_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
-
-        # Initialize first row and column with gap penalties
-        for i in range(1, m + 1):
-            score_matrix[i][0] = score_matrix[i - 1][0] - 1
-
-        for j in range(1, n + 1):
-            score_matrix[0][j] = score_matrix[0][j - 1] - 1
-
-        # Fill the matrices
-        for i in range(1, m + 1):
-            for j in range(1, n + 1):
-                # Check if we have consecutive Gs
-                consecutive_g_count = 0
-                if (
-                    i > 1
-                    and j > 1
-                    and seq1[i - 2] == "G"
-                    and seq2[j - 2] == "G"
-                    and seq1[i - 1] == "G"
-                    and seq2[j - 1] == "G"
-                ):
-                    consecutive_g_count = g_count_matrix[i - 1][j - 1]
-
-                # Calculate scores for each possible move
-                if seq1[i - 1] == "G" and seq2[j - 1] == "G":
-                    diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
-                        seq1, seq2, i - 1, j - 1, consecutive_g_count
-                    )
-                    # Update G count for this position
-                    g_count_matrix[i][j] = g_count_matrix[i - 1][j - 1] + 1
-                else:
-                    diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
-                        seq1, seq2, i - 1, j - 1, 0
-                    )
-                    g_count_matrix[i][j] = 0
-
-                up_score = score_matrix[i - 1][j] - 1  # Gap in seq2
-                left_score = score_matrix[i][j - 1] - 1  # Gap in seq1
-
-                # Choose the best score
-                score_matrix[i][j] = max(diagonal_score, up_score, left_score)
-
-        optimal_score = score_matrix[m][n]
-
-    # Store all possible moves at each cell
-    traceback = [[[] for _ in range(n + 1)] for _ in range(m + 1)]
-
-    # Compute the traceback matrix based on the score matrix
-    for i in range(m + 1):
-        for j in range(n + 1):
-            if i == 0 and j > 0:
-                traceback[i][j].append(("left", score_matrix[i][j]))
-            elif j == 0 and i > 0:
-                traceback[i][j].append(("up", score_matrix[i][j]))
-            elif i > 0 and j > 0:
-                # Calculate scores for each possible move
-                diagonal_score = score_matrix[i - 1][j - 1]
-                up_score = score_matrix[i - 1][j]
-                left_score = score_matrix[i][j - 1]
-
-                # Find the best score at this position
-                best_score = score_matrix[i][j]
-                min_acceptable = best_score * score_threshold
-
-                # Add moves that are within threshold
-                if (
-                    i > 0
-                    and j > 0
-                    and diagonal_score + calculate_score(seq1, seq2, i - 1, j - 1, 0)
-                    >= min_acceptable
-                ):
-                    traceback[i][j].append(("diagonal", diagonal_score))
-                if i > 0 and up_score - 1 >= min_acceptable:
-                    traceback[i][j].append(("up", up_score))
-                if j > 0 and left_score - 1 >= min_acceptable:
-                    traceback[i][j].append(("left", left_score))
-
-                # Sort moves by score (highest first)
-                traceback[i][j].sort(key=lambda x: x[1], reverse=True)
-
-    # Generate multiple alignments using backtracking
-    alignments = []
+    # Calculate the minimum acceptable score
     min_score_threshold = optimal_score * score_threshold
 
-    # Use depth-first search to find multiple paths
-    def backtrack(i, j, aligned1, aligned2, path_score):
+    # Initialize a list to store alignments
+    alignments = []
+    
+    # Use beam search to find multiple alignments
+    # Each state is (i, j, aligned_seq1, aligned_seq2, current_score, g_count)
+    # where i, j are positions in the matrix, aligned_seq1/2 are the alignments so far,
+    # current_score is the score so far, and g_count is the number of consecutive G matches
+    
+    # Start with the bottom-right cell
+    beam = [(m, n, [], [], 0, 0)]  # (i, j, aligned1, aligned2, score, g_count)
+    seen_states = set()  # To avoid revisiting states
+    
+    # Keep track of complete alignments
+    complete_alignments = []
+    
+    # Beam search parameters
+    beam_width = max(num_alignments * 3, 20)  # Keep this many paths at each step
+    max_iterations = m * n * 2  # Limit total iterations to avoid excessive computation
+    
+    iteration = 0
+    while beam and iteration < max_iterations and len(complete_alignments) < num_alignments * 3:
+        iteration += 1
+        
+        # Get the current state
+        i, j, aligned1, aligned2, current_score, g_count = beam.pop(0)
+        
+        # If we've reached the beginning of both sequences, we have a complete alignment
         if i == 0 and j == 0:
-            # We've reached the beginning of both sequences
-            alignments.append(
-                (
-                    "".join(reversed(aligned1)),
-                    "".join(reversed(aligned2)),
-                    path_score,
-                )
-            )
-            return
-
-        # Try all possible moves from this cell
-        for move, move_score in traceback[i][j]:
-            if move == "diagonal":
-                # Calculate the score for this specific match/mismatch
-                if i > 0 and j > 0:
-                    # Check for consecutive Gs
-                    consecutive_g_bonus = 0
-                    if (
-                        seq1[i - 1] == "G"
-                        and seq2[j - 1] == "G"
-                        and i > 1
-                        and j > 1
-                        and seq1[i - 2] == "G"
-                        and seq2[j - 2] == "G"
-                    ):
-                        # Find how many consecutive Gs we have
-                        k = 2
-                        while (
-                            i - k >= 0
-                            and j - k >= 0
-                            and seq1[i - k] == "G"
-                            and seq2[j - k] == "G"
-                        ):
-                            k += 1
-                        consecutive_g_bonus = k - 1
-
-                    # Calculate position-specific score
-                    pos_score = 2  # Basic match score
-                    if seq1[i - 1] == seq2[j - 1]:  # Match
-                        if seq1[i - 1] == "G":  # G match
-                            pos_score += 1 + consecutive_g_bonus
-                    else:  # Mismatch
-                        pos_score = -1
-
-                    backtrack(
-                        i - 1,
-                        j - 1,
-                        aligned1 + [seq1[i - 1]],
-                        aligned2 + [seq2[j - 1]],
-                        path_score + pos_score,
-                    )
-                else:
-                    backtrack(
-                        i - 1,
-                        j - 1,
-                        aligned1 + [seq1[i - 1]],
-                        aligned2 + [seq2[j - 1]],
-                        path_score,
-                    )
-            elif move == "up":
-                backtrack(
-                    i - 1,
-                    j,
-                    aligned1 + [seq1[i - 1]],
-                    aligned2 + ["-"],
-                    path_score - 1,  # Gap penalty
-                )
-            elif move == "left":
-                backtrack(
-                    i,
-                    j - 1,
-                    aligned1 + ["-"],
-                    aligned2 + [seq2[j - 1]],
-                    path_score - 1,  # Gap penalty
-                )
-
-            # Stop if we have enough alignments
-            if (
-                len(alignments) >= num_alignments * 3
-            ):  # Get more than needed, then filter
-                return
-
-    # Start backtracking from the bottom-right cell
-    backtrack(m, n, [], [], 0)  # Start with score 0 and calculate during backtracking
-
+            # Convert lists to strings
+            aligned_seq1 = "".join(aligned1)
+            aligned_seq2 = "".join(aligned2)
+            
+            # Add to complete alignments
+            complete_alignments.append((aligned_seq1, aligned_seq2, current_score))
+            
+            # If we have enough alignments, we can stop
+            if len(complete_alignments) >= num_alignments * 3:
+                break
+                
+            # Continue to process other paths
+            continue
+        
+        # Generate possible moves from this cell
+        moves = []
+        
+        # Diagonal move (match/mismatch)
+        if i > 0 and j > 0:
+            # Check for G match and consecutive Gs
+            is_g_match = seq1[i-1] == 'G' and seq2[j-1] == 'G'
+            consecutive_g_bonus = 0
+            new_g_count = 0
+            
+            if is_g_match:
+                new_g_count = g_count + 1
+                consecutive_g_bonus = g_count  # Bonus based on previous consecutive Gs
+            
+            # Calculate score for this move
+            if seq1[i-1] == seq2[j-1]:  # Match
+                move_score = 2  # Basic match score
+                if is_g_match:
+                    move_score += 1 + consecutive_g_bonus  # G match bonus
+            else:  # Mismatch
+                move_score = -1
+                
+            # Add diagonal move
+            moves.append((
+                i-1, j-1, 
+                [seq1[i-1]] + aligned1, 
+                [seq2[j-1]] + aligned2,
+                current_score + move_score,
+                new_g_count
+            ))
+        
+        # Up move (gap in seq2)
+        if i > 0:
+            moves.append((
+                i-1, j,
+                [seq1[i-1]] + aligned1,
+                ['-'] + aligned2,
+                current_score - 1,  # Gap penalty
+                0  # Reset consecutive G count
+            ))
+        
+        # Left move (gap in seq1)
+        if j > 0:
+            moves.append((
+                i, j-1,
+                ['-'] + aligned1,
+                [seq2[j-1]] + aligned2,
+                current_score - 1,  # Gap penalty
+                0  # Reset consecutive G count
+            ))
+        
+        # Add valid moves to the beam
+        for move in moves:
+            # Create a state key that doesn't include the alignments (to save memory)
+            state_key = (move[0], move[1])
+            
+            # Only add if we haven't seen this state before or if the score is better
+            if state_key not in seen_states:
+                beam.append(move)
+                seen_states.add(state_key)
+        
+        # Sort the beam by score (highest first) and keep only the top paths
+        beam.sort(key=lambda x: x[4], reverse=True)
+        beam = beam[:beam_width]
+    
     # Calculate actual scores for each alignment
     scored_alignments = []
-    for aligned_seq1, aligned_seq2, path_score in alignments:
-        # Recalculate score to ensure accuracy
+    for aligned_seq1, aligned_seq2, _ in complete_alignments:
+        # Calculate the final score
         final_score = calculate_alignment_score(aligned_seq1, aligned_seq2)
         scored_alignments.append((aligned_seq1, aligned_seq2, final_score))
-
+    
     # Sort alignments by score (highest first) and remove duplicates
     unique_alignments = []
     seen = set()
-
+    
     # Find the optimal score after recalculation
     if scored_alignments:
         max_score = max(score for _, _, score in scored_alignments)
         min_acceptable_score = max_score * score_threshold
     else:
         min_acceptable_score = 0
-
+    
     for aligned_seq1, aligned_seq2, score in sorted(
         scored_alignments, key=lambda x: x[2], reverse=True
     ):
@@ -470,11 +406,11 @@ def align_sequences(
         if alignment_key not in seen and score >= min_acceptable_score:
             seen.add(alignment_key)
             unique_alignments.append((aligned_seq1, aligned_seq2, score))
-
+            
             # Stop if we have enough unique alignments
             if len(unique_alignments) >= num_alignments:
                 break
-
+    
     return unique_alignments
 
 
@@ -726,7 +662,11 @@ def align_against_quadruplexes(
     print("Computing alignment scores for all quadruplexes...")
 
     quad_scores = []
-    for quad, source_file in quadruplexes:
+    for i, (quad, source_file) in enumerate(quadruplexes):
+        # Show progress
+        if i % 10 == 0 and i > 0:
+            print(f"  Processed {i}/{len(quadruplexes)} quadruplexes...")
+            
         # Compute score matrix and optimal score
         score_matrix, optimal_score = compute_alignment_score_matrix(
             sequence, quad.sequence
@@ -754,13 +694,14 @@ def align_against_quadruplexes(
 
     # Generate alignments only for filtered quadruplexes
     all_alignments = []
+    total_quads = len(filtered_quads)
 
-    for quad, source_file, _ in filtered_quads:
-        print(f"Generating alignments for sequence from {source_file}...")
+    for i, (quad, source_file, score_matrix) in enumerate(filtered_quads):
+        print(f"Generating alignments for sequence from {source_file}... ({i+1}/{total_quads})")
 
         # Align the sequence against the quadruplex sequence using pre-computed matrix
         alignments = align_sequences(
-            sequence, quad.sequence, num_alignments, score_threshold, _
+            sequence, quad.sequence, num_alignments, score_threshold, score_matrix
         )
 
         # Add quadruplex and source information to each alignment
