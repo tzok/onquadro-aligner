@@ -233,9 +233,7 @@ def calculate_score(seq1, seq2, i, j, consecutive_g_count):
         return -1  # Mismatch penalty
 
 
-def align_sequences(
-    seq1, seq2, score_threshold=0.8, pre_computed_matrix=None
-):
+def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
     """
     Align two DNA/RNA sequences with emphasis on consecutive G matches.
 
@@ -302,7 +300,6 @@ def align_sequences(
 
             # Add to complete alignments
             complete_alignments.append((aligned_seq1, aligned_seq2, current_score))
-
 
             # Continue to process other paths
             continue
@@ -406,7 +403,6 @@ def align_sequences(
         if alignment_key not in seen and score >= min_acceptable_score:
             seen.add(alignment_key)
             unique_alignments.append((aligned_seq1, aligned_seq2, score))
-
 
     return unique_alignments
 
@@ -605,9 +601,7 @@ def process_alignment(args):
     sequence, quad, source_file, score_matrix, score_threshold = args
 
     # Align the sequence against the quadruplex sequence using pre-computed matrix
-    alignments = align_sequences(
-        sequence, quad.sequence, score_threshold, score_matrix
-    )
+    alignments = align_sequences(sequence, quad.sequence, score_threshold, score_matrix)
 
     # Add quadruplex and source information to each alignment
     return [
@@ -682,9 +676,7 @@ def compute_alignment_score_matrix(seq1, seq2):
     return score_matrix, score_matrix[m][n]
 
 
-def align_against_quadruplexes(
-    sequence, quadruplexes, score_threshold=0.8
-):
+def align_against_quadruplexes(sequence, quadruplexes, score_threshold=0.8):
     """
     Align a sequence against all quadruplex sequences and rank the results.
     Uses parallel processing to speed up computation.
@@ -865,9 +857,7 @@ def main():
 
     # Align sequence against all quadruplexes
     print(f"Aligning sequence against {len(quadruplexes)} quadruplex structures...")
-    print(
-        f"Using parameters: score_threshold={args.score_threshold}"
-    )
+    print(f"Using parameters: score_threshold={args.score_threshold}")
 
     ranked_alignments = align_against_quadruplexes(
         sequence, quadruplexes, args.score_threshold
