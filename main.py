@@ -162,14 +162,14 @@ def align_sequences(seq1, seq2, num_alignments=5, score_threshold=0.8):
     min_score_threshold = optimal_score * score_threshold
 
     # Use depth-first search to find multiple paths
-    def backtrack(i, j, aligned1, aligned2, current_score):
+    def backtrack(i, j, aligned1, aligned2, path_score):
         if i == 0 and j == 0:
             # We've reached the beginning of both sequences
             alignments.append(
                 (
                     "".join(reversed(aligned1)),
                     "".join(reversed(aligned2)),
-                    current_score,
+                    path_score,
                 )
             )
             return
@@ -177,38 +177,80 @@ def align_sequences(seq1, seq2, num_alignments=5, score_threshold=0.8):
         # Try all possible moves from this cell
         for move, move_score in traceback[i][j]:
             if move == "diagonal":
-                backtrack(
-                    i - 1,
-                    j - 1,
-                    aligned1 + [seq1[i - 1]],
-                    aligned2 + [seq2[j - 1]],
-                    current_score,
-                )
+                # Calculate the score for this specific match/mismatch
+                if i > 0 and j > 0:
+                    # Check for consecutive Gs
+                    consecutive_g_bonus = 0
+                    if (seq1[i-1] == 'G' and seq2[j-1] == 'G' and 
+                        i > 1 and j > 1 and seq1[i-2] == 'G' and seq2[j-2] == 'G'):
+                        # Find how many consecutive Gs we have
+                        k = 2
+                        while i-k >= 0 and j-k >= 0 and seq1[i-k] == 'G' and seq2[j-k] == 'G':
+                            k += 1
+                        consecutive_g_bonus = k - 1
+                    
+                    # Calculate position-specific score
+                    pos_score = 2  # Basic match score
+                    if seq1[i-1] == seq2[j-1]:  # Match
+                        if seq1[i-1] == 'G':  # G match
+                            pos_score += 1 + consecutive_g_bonus
+                    else:  # Mismatch
+                        pos_score = -1
+                        
+                    backtrack(
+                        i - 1,
+                        j - 1,
+                        aligned1 + [seq1[i - 1]],
+                        aligned2 + [seq2[j - 1]],
+                        path_score + pos_score,
+                    )
+                else:
+                    backtrack(
+                        i - 1,
+                        j - 1,
+                        aligned1 + [seq1[i - 1]],
+                        aligned2 + [seq2[j - 1]],
+                        path_score,
+                    )
             elif move == "up":
                 backtrack(
-                    i - 1, j, aligned1 + [seq1[i - 1]], aligned2 + ["-"], current_score
+                    i - 1, j, aligned1 + [seq1[i - 1]], aligned2 + ["-"], path_score - 1  # Gap penalty
                 )
             elif move == "left":
                 backtrack(
-                    i, j - 1, aligned1 + ["-"], aligned2 + [seq2[j - 1]], current_score
+                    i, j - 1, aligned1 + ["-"], aligned2 + [seq2[j - 1]], path_score - 1  # Gap penalty
                 )
 
             # Stop if we have enough alignments
-            if len(alignments) >= num_alignments:
+            if len(alignments) >= num_alignments * 3:  # Get more than needed, then filter
                 return
 
     # Start backtracking from the bottom-right cell
-    backtrack(m, n, [], [], optimal_score)
+    backtrack(m, n, [], [], 0)  # Start with score 0 and calculate during backtracking
 
+    # Calculate actual scores for each alignment
+    scored_alignments = []
+    for aligned_seq1, aligned_seq2, path_score in alignments:
+        # Recalculate score to ensure accuracy
+        final_score = calculate_alignment_score(aligned_seq1, aligned_seq2)
+        scored_alignments.append((aligned_seq1, aligned_seq2, final_score))
+    
     # Sort alignments by score (highest first) and remove duplicates
     unique_alignments = []
     seen = set()
+    
+    # Find the optimal score after recalculation
+    if scored_alignments:
+        max_score = max(score for _, _, score in scored_alignments)
+        min_acceptable_score = max_score * score_threshold
+    else:
+        min_acceptable_score = 0
 
     for aligned_seq1, aligned_seq2, score in sorted(
-        alignments, key=lambda x: x[2], reverse=True
+        scored_alignments, key=lambda x: x[2], reverse=True
     ):
         alignment_key = (aligned_seq1, aligned_seq2)
-        if alignment_key not in seen and score >= min_score_threshold:
+        if alignment_key not in seen and score >= min_acceptable_score:
             seen.add(alignment_key)
             unique_alignments.append((aligned_seq1, aligned_seq2, score))
 
@@ -217,6 +259,45 @@ def align_sequences(seq1, seq2, num_alignments=5, score_threshold=0.8):
                 break
 
     return unique_alignments
+
+
+def calculate_alignment_score(aligned_seq1, aligned_seq2):
+    """
+    Calculate the score for an alignment based on matches, mismatches, gaps,
+    and consecutive G bonuses.
+    
+    Args:
+        aligned_seq1, aligned_seq2: The aligned sequences
+        
+    Returns:
+        The total alignment score
+    """
+    score = 0
+    consecutive_g_count = 0
+    
+    for i in range(min(len(aligned_seq1), len(aligned_seq2))):
+        if aligned_seq1[i] == '-' or aligned_seq2[i] == '-':
+            # Gap penalty
+            score -= 1
+            consecutive_g_count = 0
+        elif aligned_seq1[i] == aligned_seq2[i]:
+            # Match
+            base_score = 2
+            if aligned_seq1[i] == 'G':
+                # G match bonus
+                base_score += 1
+                # Consecutive G bonus
+                consecutive_g_count += 1
+                base_score += consecutive_g_count - 1  # Additional bonus for consecutive Gs
+            else:
+                consecutive_g_count = 0
+            score += base_score
+        else:
+            # Mismatch
+            score -= 1
+            consecutive_g_count = 0
+    
+    return score
 
 
 def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None):
