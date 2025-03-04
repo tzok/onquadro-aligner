@@ -32,7 +32,7 @@ class QuadruplexDotBracket:
 
     def validate(self):
         """
-        Validate that all fields have the same length and substring structure.
+        Validate that all fields have the same length.
 
         Returns:
             bool: True if valid, False otherwise
@@ -41,21 +41,6 @@ class QuadruplexDotBracket:
         fields = [self.sequence, self.structure, self.chi, self.loop]
         if len(set(len(field) for field in fields)) != 1:
             return False
-
-        # Check if all fields have the same substring structure
-        substrings = []
-        for field in fields:
-            substrings.append(field.split("-"))
-
-        # Check if all fields have the same number of substrings
-        if len(set(len(subs) for subs in substrings)) != 1:
-            return False
-
-        # Check if corresponding substrings have the same length
-        for i in range(len(substrings[0])):
-            substring_lengths = [len(subs[i]) for subs in substrings]
-            if len(set(substring_lengths)) != 1:
-                return False
 
         return True
 
@@ -172,13 +157,6 @@ def parse_quadruplex_object(data):
         else:
             loop = loop_data
 
-        # Print debug info about the parsed data
-        print(f"Parsed quadruplex data:")
-        print(f"  Sequence: {sequence[:30]}{'...' if len(sequence) > 30 else ''}")
-        print(f"  Structure: {structure[:30]}{'...' if len(structure) > 30 else ''}")
-        print(f"  Chi: {chi[:30]}{'...' if len(chi) > 30 else ''}")
-        print(f"  Loop: {loop[:30]}{'...' if len(loop) > 30 else ''}")
-
         # Create and return the object
         return QuadruplexDotBracket(sequence, structure, chi, loop)
 
@@ -225,7 +203,7 @@ def parse_arguments():
 
 def validate_sequence(sequence):
     """Validate if the input is a valid DNA/RNA sequence."""
-    valid_chars = set("ATGCUN")
+    valid_chars = set("ATGCUN-")  # Include '-' as a valid character
     if not all(char.upper() in valid_chars for char in sequence):
         return False
     return True
@@ -489,11 +467,7 @@ def calculate_alignment_score(aligned_seq1, aligned_seq2):
     consecutive_g_count = 0
 
     for i in range(min(len(aligned_seq1), len(aligned_seq2))):
-        if aligned_seq1[i] == "-" or aligned_seq2[i] == "-":
-            # Gap penalty
-            score -= 1
-            consecutive_g_count = 0
-        elif aligned_seq1[i] == aligned_seq2[i]:
+        if aligned_seq1[i] == aligned_seq2[i]:
             # Match
             base_score = 2
             if aligned_seq1[i] == "G":
@@ -539,7 +513,6 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
         if (
             i < len(aligned_seq2)
             and aligned_seq1[i] == aligned_seq2[i]
-            and aligned_seq1[i] != "-"
         ):
             if aligned_seq1[i] == "G":
                 match_line += "*"  # Special indicator for G matches
@@ -606,8 +579,8 @@ def read_quadruplexes_from_directory(directory_path):
                     "quadruplexDotBracket": {
                         "sequence": "GGGAGGGTGGGGAGGGTGGGGAAGG",
                         "structure": "((([[[)))((([[[)))((([[[)))",
-                        "chi": "1.5",
-                        "loop": "3,3,3",
+                        "chi": "((([[[)))((([[[)))((([[[)))",
+                        "loop": "((([[[)))((([[[)))((([[[)))",
                     }
                 }
 
@@ -637,8 +610,8 @@ def read_quadruplexes_from_directory(directory_path):
                     "quadruplexDotBracket": {
                         "sequence": "GGGAGGGTGGGGAGGGTGGGGAAGG",
                         "structure": "((([[[)))((([[[)))((([[[)))",
-                        "chi": "1.5",
-                        "loop": "3,3,3",
+                        "chi": "((([[[)))((([[[)))((([[[)))",
+                        "loop": "((([[[)))((([[[)))((([[[)))",
                     }
                 }
 
@@ -709,35 +682,26 @@ def align_against_quadruplexes(
     all_alignments = []
 
     for quad, source_file in quadruplexes:
-        # For each segment in the quadruplex
-        segments = quad.get_segments()
+        # Align against the whole sequence
+        print(f"Aligning against sequence from {source_file}...")
+        
+        # Align the sequence against the quadruplex sequence
+        alignments = align_sequences(
+            sequence, quad.sequence, num_alignments, score_threshold
+        )
 
-        for i, (seq_segment, _, _, _) in enumerate(segments):
-            # Skip empty segments
-            if not seq_segment:
-                continue
-
-            print(
-                f"Aligning against segment {i + 1}/{len(segments)} from {source_file}..."
-            )
-
-            # Align the sequence against this segment
-            alignments = align_sequences(
-                sequence, seq_segment, num_alignments, score_threshold
-            )
-
-            # Add quadruplex and source information to each alignment
-            for aligned_seq1, aligned_seq2, score in alignments:
-                all_alignments.append(
-                    (
-                        quad,
-                        source_file,
-                        i + 1,  # segment number
-                        aligned_seq1,
-                        aligned_seq2,
-                        score,
-                    )
+        # Add quadruplex and source information to each alignment
+        for aligned_seq1, aligned_seq2, score in alignments:
+            all_alignments.append(
+                (
+                    quad,
+                    source_file,
+                    0,  # No segment number
+                    aligned_seq1,
+                    aligned_seq2,
+                    score,
                 )
+            )
 
     # Sort all alignments by score (highest first)
     all_alignments.sort(key=lambda x: x[5], reverse=True)
@@ -780,19 +744,14 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
     for i, (
         quad,
         source_file,
-        segment_num,
+        _,  # Unused segment_num
         aligned_seq1,
         aligned_seq2,
         score,
     ) in enumerate(results_to_display, 1):
         print(f"\nRank #{i} (Score: {score}):")
-        print(f"Source: {source_file}, Segment: {segment_num}")
-
-        # Display a snippet of the quadruplex sequence
-        segments = quad.get_segments()
-        if 0 <= segment_num - 1 < len(segments):
-            segment = segments[segment_num - 1]
-            print(f"Quadruplex segment: {segment[0]}")
+        print(f"Source: {source_file}")
+        print(f"Quadruplex: {quad.sequence}")
 
         # Display the alignment
         print(f"Sequence:   {aligned_seq1}")
@@ -803,7 +762,6 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
             if (
                 j < len(aligned_seq2)
                 and aligned_seq1[j] == aligned_seq2[j]
-                and aligned_seq1[j] != "-"
             ):
                 if aligned_seq1[j] == "G":
                     match_line += "*"  # Special indicator for G matches
