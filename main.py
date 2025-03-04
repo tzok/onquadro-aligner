@@ -172,6 +172,13 @@ def parse_quadruplex_object(data):
         else:
             loop = loop_data
 
+        # Print debug info about the parsed data
+        print(f"Parsed quadruplex data:")
+        print(f"  Sequence: {sequence[:30]}{'...' if len(sequence) > 30 else ''}")
+        print(f"  Structure: {structure[:30]}{'...' if len(structure) > 30 else ''}")
+        print(f"  Chi: {chi[:30]}{'...' if len(chi) > 30 else ''}")
+        print(f"  Loop: {loop[:30]}{'...' if len(loop) > 30 else ''}")
+
         # Create and return the object
         return QuadruplexDotBracket(sequence, structure, chi, loop)
 
