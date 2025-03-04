@@ -98,7 +98,7 @@ def read_quadruplex_json(file_path):
                 quadruplexes.append(quad)
             else:
                 print(
-                    "Warning: Invalid quadruplex object found (fields have different lengths or substring structure)"
+                    f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths or substring structure)"
                 )
         elif isinstance(data, list):
             # Array of objects
@@ -108,7 +108,7 @@ def read_quadruplex_json(file_path):
                     quadruplexes.append(quad)
                 else:
                     print(
-                        "Warning: Invalid quadruplex object found (fields have different lengths or substring structure)"
+                        f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths or substring structure)"
                     )
 
         return quadruplexes
@@ -166,15 +166,20 @@ def parse_quadruplex_object(data):
 
 def parse_arguments():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser(description="Align two DNA/RNA sequences.")
-    parser.add_argument("seq1", help="First DNA/RNA sequence")
-    parser.add_argument("seq2", help="Second DNA/RNA sequence")
+    parser = argparse.ArgumentParser(description="Align DNA/RNA sequences against quadruplex structures.")
+    parser.add_argument("sequence", help="DNA/RNA sequence to align")
+    parser.add_argument(
+        "-d",
+        "--directory",
+        help="Directory containing JSON files with quadruplex data",
+        required=True,
+    )
     parser.add_argument(
         "-n",
         "--num-alignments",
         type=int,
         default=5,
-        help="Number of alignments to generate (default: 5)",
+        help="Number of alignments to generate per quadruplex (default: 5)",
     )
     parser.add_argument(
         "-s",
@@ -184,9 +189,11 @@ def parse_arguments():
         help="Score threshold as a fraction of the optimal score (0.0-1.0, default: 0.8)",
     )
     parser.add_argument(
-        "-j",
-        "--json-file",
-        help="Path to JSON file containing quadruplex data",
+        "-t",
+        "--top-results",
+        type=int,
+        default=10,
+        help="Number of top-scoring alignments to display (default: 10)",
     )
     return parser.parse_args()
 
@@ -543,6 +550,52 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
         )
 
 
+def read_quadruplexes_from_directory(directory_path):
+    """
+    Read all JSON files in a directory and extract quadruplex objects.
+    
+    Args:
+        directory_path: Path to directory containing JSON files
+        
+    Returns:
+        List of tuples (quadruplex, source_file)
+    """
+    import os
+    
+    all_quadruplexes = []
+    
+    try:
+        # Check if directory exists
+        if not os.path.isdir(directory_path):
+            print(f"Error: Directory '{directory_path}' not found.")
+            return []
+            
+        # Get all JSON files in the directory
+        json_files = [f for f in os.listdir(directory_path) if f.lower().endswith('.json')]
+        
+        if not json_files:
+            print(f"Warning: No JSON files found in directory '{directory_path}'.")
+            return []
+            
+        print(f"Found {len(json_files)} JSON files in '{directory_path}'.")
+        
+        # Process each JSON file
+        for json_file in json_files:
+            file_path = os.path.join(directory_path, json_file)
+            quadruplexes = read_quadruplex_json(file_path)
+            
+            # Add source file information to each quadruplex
+            for quad in quadruplexes:
+                all_quadruplexes.append((quad, json_file))
+                
+        print(f"Loaded {len(all_quadruplexes)} quadruplex structures in total.")
+        return all_quadruplexes
+        
+    except Exception as e:
+        print(f"Error reading directory: {str(e)}")
+        return []
+
+
 def display_quadruplex_details(quadruplex):
     """
     Display detailed information about a quadruplex, including segment analysis.
@@ -564,6 +617,58 @@ def display_quadruplex_details(quadruplex):
             print(f"    Loop: {loop}")
 
 
+def align_against_quadruplexes(sequence, quadruplexes, num_alignments=5, score_threshold=0.8):
+    """
+    Align a sequence against all quadruplex sequences and rank the results.
+    
+    Args:
+        sequence: The sequence to align
+        quadruplexes: List of tuples (quadruplex, source_file)
+        num_alignments: Number of alignments to generate per quadruplex
+        score_threshold: Score threshold for alignments
+        
+    Returns:
+        List of tuples (quadruplex, source_file, aligned_seq1, aligned_seq2, score)
+        sorted by score (highest first)
+    """
+    all_alignments = []
+    
+    for quad, source_file in quadruplexes:
+        # For each segment in the quadruplex
+        segments = quad.get_segments()
+        
+        for i, (seq_segment, _, _, _) in enumerate(segments):
+            # Skip empty segments
+            if not seq_segment:
+                continue
+                
+            print(f"Aligning against segment {i+1}/{len(segments)} from {source_file}...")
+            
+            # Align the sequence against this segment
+            alignments = align_sequences(
+                sequence, 
+                seq_segment, 
+                num_alignments, 
+                score_threshold
+            )
+            
+            # Add quadruplex and source information to each alignment
+            for aligned_seq1, aligned_seq2, score in alignments:
+                all_alignments.append((
+                    quad,
+                    source_file,
+                    i+1,  # segment number
+                    aligned_seq1,
+                    aligned_seq2,
+                    score
+                ))
+    
+    # Sort all alignments by score (highest first)
+    all_alignments.sort(key=lambda x: x[5], reverse=True)
+    
+    return all_alignments
+
+
 def display_all_alignments(alignments):
     """
     Display multiple alignments with their scores.
@@ -577,47 +682,95 @@ def display_all_alignments(alignments):
         display_alignment(aligned_seq1, aligned_seq2, score, i)
 
 
+def display_ranked_alignments(ranked_alignments, top_n=10):
+    """
+    Display ranked alignments against quadruplexes.
+    
+    Args:
+        ranked_alignments: List of tuples (quadruplex, source_file, segment_num, aligned_seq1, aligned_seq2, score)
+        top_n: Number of top results to display
+    """
+    if not ranked_alignments:
+        print("\nNo alignments found.")
+        return
+        
+    # Limit to top N results
+    results_to_display = ranked_alignments[:top_n]
+    
+    print(f"\nTop {len(results_to_display)} alignments (out of {len(ranked_alignments)} total):")
+    
+    for i, (quad, source_file, segment_num, aligned_seq1, aligned_seq2, score) in enumerate(results_to_display, 1):
+        print(f"\nRank #{i} (Score: {score}):")
+        print(f"Source: {source_file}, Segment: {segment_num}")
+        
+        # Display a snippet of the quadruplex sequence
+        segments = quad.get_segments()
+        if 0 <= segment_num-1 < len(segments):
+            segment = segments[segment_num-1]
+            print(f"Quadruplex segment: {segment[0]}")
+        
+        # Display the alignment
+        print(f"Sequence:   {aligned_seq1}")
+        
+        # Create a match line
+        match_line = ""
+        for j in range(len(aligned_seq1)):
+            if (
+                j < len(aligned_seq2)
+                and aligned_seq1[j] == aligned_seq2[j]
+                and aligned_seq1[j] != "-"
+            ):
+                if aligned_seq1[j] == "G":
+                    match_line += "*"  # Special indicator for G matches
+                else:
+                    match_line += "|"  # Regular match
+            else:
+                match_line += " "  # Mismatch or gap
+                
+        print(f"            {match_line}")
+        print(f"Quadruplex: {aligned_seq2}")
+        
+        # Count G matches
+        g_matches = sum(1 for j in range(min(len(aligned_seq1), len(aligned_seq2))) 
+                      if aligned_seq1[j] == "G" and aligned_seq2[j] == "G")
+        print(f"G matches: {g_matches}")
+
+
 def main():
     """Main function to run the alignment tool."""
     args = parse_arguments()
 
-    # Check if JSON file was provided
-    if args.json_file:
-        quadruplexes = read_quadruplex_json(args.json_file)
-        if quadruplexes:
-            print(
-                f"Loaded {len(quadruplexes)} quadruplex structures from {args.json_file}"
-            )
-            for i, quad in enumerate(quadruplexes, 1):
-                print(f"\nQuadruplex #{i}:")
-                display_quadruplex_details(quad)
-            return
-
-    # Get sequences from command line arguments
-    seq1 = args.seq1
-    seq2 = args.seq2
-    num_alignments = args.num_alignments
-    score_threshold = args.score_threshold
-
-    # Validate sequences
-    if not validate_sequence(seq1) or not validate_sequence(seq2):
-        print(
-            "Error: Invalid sequence. Please use only A, T, G, C, U, or N characters."
-        )
+    # Get the sequence to align
+    sequence = args.sequence
+    
+    # Validate sequence
+    if not validate_sequence(sequence):
+        print("Error: Invalid sequence. Please use only A, T, G, C, U, or N characters.")
         sys.exit(1)
-
-    # Print input sequences
-    print(f"Input Sequence 1: {seq1}")
-    print(f"Input Sequence 2: {seq2}")
-    print(
-        f"Generating up to {num_alignments} alignments with score threshold {score_threshold}"
+    
+    # Print input sequence
+    print(f"Input Sequence: {sequence}")
+    
+    # Read quadruplexes from directory
+    quadruplexes = read_quadruplexes_from_directory(args.directory)
+    
+    if not quadruplexes:
+        print("No valid quadruplex structures found. Exiting.")
+        sys.exit(1)
+    
+    # Align sequence against all quadruplexes
+    print(f"Aligning sequence against {len(quadruplexes)} quadruplex structures...")
+    print(f"Using parameters: num_alignments={args.num_alignments}, score_threshold={args.score_threshold}")
+    
+    ranked_alignments = align_against_quadruplexes(
+        sequence,
+        quadruplexes,
+        args.num_alignments,
+        args.score_threshold
     )
-
-    # Align sequences and get multiple alignments
-    alignments = align_sequences(seq1, seq2, num_alignments, score_threshold)
-
-    # Display all alignments
-    display_all_alignments(alignments)
+    
+    # Display top ranked alignments
+    display_ranked_alignments(ranked_alignments, args.top_results)
 
 
 if __name__ == "__main__":
