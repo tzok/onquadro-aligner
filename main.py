@@ -17,8 +17,8 @@ class QuadruplexDotBracket:
     """Class for storing quadruplex dot-bracket notation data."""
     sequence: str
     structure: str
-    chi: float
-    loop: List[int]
+    chi: str
+    loop: str
     
     def __str__(self):
         """String representation of the quadruplex."""
@@ -26,6 +26,49 @@ class QuadruplexDotBracket:
                 f"Structure: {self.structure}\n"
                 f"Chi: {self.chi}\n"
                 f"Loop: {self.loop}")
+    
+    def validate(self):
+        """
+        Validate that all fields have the same length and substring structure.
+        
+        Returns:
+            bool: True if valid, False otherwise
+        """
+        # Check if all fields have the same length
+        fields = [self.sequence, self.structure, self.chi, self.loop]
+        if len(set(len(field) for field in fields)) != 1:
+            return False
+            
+        # Check if all fields have the same substring structure
+        substrings = []
+        for field in fields:
+            substrings.append(field.split('-'))
+            
+        # Check if all fields have the same number of substrings
+        if len(set(len(subs) for subs in substrings)) != 1:
+            return False
+            
+        # Check if corresponding substrings have the same length
+        for i in range(len(substrings[0])):
+            substring_lengths = [len(subs[i]) for subs in substrings]
+            if len(set(substring_lengths)) != 1:
+                return False
+                
+        return True
+    
+    def get_segments(self):
+        """
+        Get the segments of the quadruplex (parts separated by '-').
+        
+        Returns:
+            List of tuples (sequence_segment, structure_segment, chi_segment, loop_segment)
+        """
+        seq_segments = self.sequence.split('-')
+        struct_segments = self.structure.split('-')
+        chi_segments = self.chi.split('-')
+        loop_segments = self.loop.split('-')
+        
+        return list(zip(seq_segments, struct_segments, chi_segments, loop_segments))
 
 
 def read_quadruplex_json(file_path):
@@ -47,11 +90,19 @@ def read_quadruplex_json(file_path):
         # Handle both single object and array of objects
         if isinstance(data, dict):
             # Single object
-            quadruplexes.append(parse_quadruplex_object(data))
+            quad = parse_quadruplex_object(data)
+            if quad and quad.validate():
+                quadruplexes.append(quad)
+            else:
+                print("Warning: Invalid quadruplex object found (fields have different lengths or substring structure)")
         elif isinstance(data, list):
             # Array of objects
             for item in data:
-                quadruplexes.append(parse_quadruplex_object(item))
+                quad = parse_quadruplex_object(item)
+                if quad and quad.validate():
+                    quadruplexes.append(quad)
+                else:
+                    print("Warning: Invalid quadruplex object found (fields have different lengths or substring structure)")
         
         return quadruplexes
     
@@ -74,29 +125,36 @@ def parse_quadruplex_object(data):
         data: Dictionary containing quadruplex data
         
     Returns:
-        QuadruplexDotBracket object
+        QuadruplexDotBracket object or None if parsing fails
     """
-    # Extract required fields with validation
-    sequence = data.get('sequence', '')
-    structure = data.get('structure', '')
-    chi = float(data.get('chi', 0.0))
-    
-    # Handle loop field which could be a list or a string representation of a list
-    loop_data = data.get('loop', [])
-    if isinstance(loop_data, str):
-        # Try to parse string representation of a list
-        try:
-            # Remove brackets and split by commas
-            loop_data = loop_data.strip('[]').split(',')
-            loop = [int(x.strip()) for x in loop_data if x.strip()]
-        except ValueError:
-            print(f"Warning: Could not parse loop data '{loop_data}', using empty list.")
-            loop = []
-    else:
-        # Assume it's already a list
-        loop = [int(x) for x in loop_data]
-    
-    return QuadruplexDotBracket(sequence, structure, chi, loop)
+    try:
+        # Extract required fields
+        sequence = str(data.get('sequence', ''))
+        structure = str(data.get('structure', ''))
+        
+        # Handle chi field - ensure it's a string
+        chi_data = data.get('chi', '')
+        if not isinstance(chi_data, str):
+            chi = str(chi_data)
+        else:
+            chi = chi_data
+        
+        # Handle loop field - ensure it's a string
+        loop_data = data.get('loop', '')
+        if not isinstance(loop_data, str):
+            if isinstance(loop_data, list):
+                loop = '-'.join(str(x) for x in loop_data)
+            else:
+                loop = str(loop_data)
+        else:
+            loop = loop_data
+        
+        # Create and return the object
+        return QuadruplexDotBracket(sequence, structure, chi, loop)
+        
+    except Exception as e:
+        print(f"Error parsing quadruplex object: {str(e)}")
+        return None
 
 
 def parse_arguments():
@@ -478,15 +536,36 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
         )
 
 
+def display_quadruplex_details(quadruplex):
+    """
+    Display detailed information about a quadruplex, including segment analysis.
+    
+    Args:
+        quadruplex: QuadruplexDotBracket object
+    """
+    print(quadruplex)
+    
+    # Display segment information
+    segments = quadruplex.get_segments()
+    if len(segments) > 1:
+        print("\nSegment Analysis:")
+        for i, (seq, struct, chi, loop) in enumerate(segments, 1):
+            print(f"  Segment #{i}:")
+            print(f"    Sequence: {seq} (length: {len(seq)})")
+            print(f"    Structure: {struct}")
+            print(f"    Chi: {chi}")
+            print(f"    Loop: {loop}")
+
+
 def display_all_alignments(alignments):
     """
     Display multiple alignments with their scores.
-
+    
     Args:
         alignments: List of tuples (aligned_seq1, aligned_seq2, score)
     """
     print(f"\nFound {len(alignments)} alignment(s):")
-
+    
     for i, (aligned_seq1, aligned_seq2, score) in enumerate(alignments, 1):
         display_alignment(aligned_seq1, aligned_seq2, score, i)
 
@@ -502,7 +581,7 @@ def main():
             print(f"Loaded {len(quadruplexes)} quadruplex structures from {args.json_file}")
             for i, quad in enumerate(quadruplexes, 1):
                 print(f"\nQuadruplex #{i}:")
-                print(quad)
+                display_quadruplex_details(quad)
             return
 
     # Get sequences from command line arguments
