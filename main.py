@@ -233,18 +233,20 @@ def calculate_score(seq1, seq2, i, j, consecutive_g_count):
         return -1  # Mismatch penalty
 
 
-def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
+def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None, quad_structure=None):
     """
     Align two DNA/RNA sequences with emphasis on consecutive G matches.
     Treats T and U as matches.
 
     Uses dynamic programming with beam search to find multiple optimal and suboptimal
     alignments that maximize the score, with special consideration for G nucleotides.
+    Gives bonus for G matches where the structure is not a dot.
 
     Args:
         seq1, seq2: The sequences to align
         score_threshold: Minimum score threshold as a fraction of optimal score (0.0-1.0)
         pre_computed_matrix: Optional pre-computed score matrix to skip computation
+        quad_structure: Optional structure string from quadruplex
 
     Returns:
         List of tuples (aligned_seq1, aligned_seq2, score) sorted by score
@@ -391,8 +393,18 @@ def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
     # Calculate actual scores for each alignment
     scored_alignments = []
     for aligned_seq1, aligned_seq2, _ in complete_alignments:
+        # Create a mapping of positions in aligned_seq2 to original positions in seq2
+        orig_positions = {}
+        orig_pos = 0
+        for i, char in enumerate(aligned_seq2):
+            if char != '-':
+                orig_positions[i] = orig_pos
+                orig_pos += 1
+            else:
+                orig_positions[i] = -1  # Gap position
+        
         # Calculate the final score
-        final_score = calculate_alignment_score(aligned_seq1, aligned_seq2)
+        final_score = calculate_alignment_score(aligned_seq1, aligned_seq2, quad_structure, orig_positions)
         scored_alignments.append((aligned_seq1, aligned_seq2, final_score))
 
     # Sort alignments by score (highest first) and remove duplicates
@@ -417,14 +429,17 @@ def align_sequences(seq1, seq2, score_threshold=0.8, pre_computed_matrix=None):
     return unique_alignments
 
 
-def calculate_alignment_score(aligned_seq1, aligned_seq2):
+def calculate_alignment_score(aligned_seq1, aligned_seq2, quad_structure=None, orig_positions=None):
     """
     Calculate the score for an alignment based on matches, mismatches, gaps,
     and consecutive G bonuses. Treats T and U as matches.
     Penalizes matches against ampersand characters more heavily.
+    Gives bonus for G matches where the structure is not a dot.
 
     Args:
         aligned_seq1, aligned_seq2: The aligned sequences
+        quad_structure: Optional structure string from quadruplex
+        orig_positions: Optional mapping of positions in aligned_seq2 to original quadruplex positions
 
     Returns:
         The total alignment score
@@ -450,6 +465,14 @@ def calculate_alignment_score(aligned_seq1, aligned_seq2):
             if aligned_seq1[i] == "G" and aligned_seq2[i] == "G":
                 # G match bonus
                 base_score += 1
+                
+                # Check if we have structure information and this isn't a gap
+                if quad_structure and orig_positions and aligned_seq2[i] != '-':
+                    orig_pos = orig_positions[i]
+                    if orig_pos < len(quad_structure) and quad_structure[orig_pos] != '.':
+                        # Additional bonus for G with non-dot structure
+                        base_score += 2
+                
                 # Consecutive G bonus
                 consecutive_g_count += 1
                 base_score += (
@@ -612,8 +635,9 @@ def process_quadruplex(args):
         Tuple of (quad, source_file, score_matrix, optimal_score)
     """
     sequence, quad, source_file = args
+    # Pass the structure information for scoring
     score_matrix, optimal_score = compute_alignment_score_matrix(
-        sequence, quad.sequence
+        sequence, quad.sequence, quad.structure
     )
     return (quad, source_file, score_matrix, optimal_score)
 
@@ -632,7 +656,14 @@ def process_alignment(args):
     sequence, quad, source_file, score_matrix, score_threshold = args
 
     # Align the sequence against the quadruplex sequence using pre-computed matrix
-    alignments = align_sequences(sequence, quad.sequence, score_threshold, score_matrix)
+    # Pass the structure information for scoring
+    alignments = align_sequences(
+        sequence, 
+        quad.sequence, 
+        score_threshold, 
+        score_matrix,
+        quad.structure
+    )
 
     # Add quadruplex and source information to each alignment
     return [
@@ -641,13 +672,15 @@ def process_alignment(args):
     ]
 
 
-def compute_alignment_score_matrix(seq1, seq2):
+def compute_alignment_score_matrix(seq1, seq2, quad_structure=None):
     """
     Compute the alignment score matrix for two sequences.
     Treats T and U as matches.
+    Gives bonus for G matches where the structure is not a dot.
 
     Args:
         seq1, seq2: The sequences to align
+        quad_structure: Optional structure string from quadruplex
 
     Returns:
         Tuple of (score_matrix, optimal_score)
@@ -699,9 +732,16 @@ def compute_alignment_score_matrix(seq1, seq2):
                     )
 
                     if is_match:
-                        diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
+                        # Base score for G match
+                        match_score = calculate_score(
                             seq1, seq2, i - 1, j - 1, consecutive_g_count
                         )
+                            
+                        # Add bonus for non-dot structure
+                        if quad_structure and j-1 < len(quad_structure) and quad_structure[j-1] != '.':
+                            match_score += 2  # Bonus for G with non-dot structure
+                                
+                        diagonal_score = score_matrix[i - 1][j - 1] + match_score
                     else:
                         diagonal_score = (
                             score_matrix[i - 1][j - 1] - 1
@@ -820,6 +860,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
     """
     Display ranked alignments against quadruplexes.
     Treats T and U as matches.
+    Highlights G matches with non-dot structure.
 
     Args:
         ranked_alignments: List of tuples (quadruplex, source_file, segment_num, aligned_seq1, aligned_seq2, score)
@@ -853,13 +894,15 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
         print(f"Source:     {source_file}")
-        print(f"Quadruplex: {quad.sequence}")  # Keep ampersands
 
         # Display the alignment
         print(f"Sequence:   {aligned_seq1}")
 
-        # Create a match line
+        # Create a match line with special indicators for G matches with non-dot structure
         match_line = ""
+        # Track position in the original quadruplex sequence for structure lookup
+        orig_pos = 0
+        
         for j in range(len(aligned_seq1)):
             if j < len(aligned_seq2):
                 # Check for exact match or T-U match
@@ -869,11 +912,19 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
                 if is_match:
                     if aligned_seq1[j] == "G" and aligned_seq2[j] == "G":
-                        match_line += "*"  # Special indicator for G matches
+                        # Check if this G has a non-dot structure
+                        if aligned_seq2[j] != '-' and orig_pos < len(quad.structure) and quad.structure[orig_pos] != '.':
+                            match_line += "#"  # Special indicator for G matches with non-dot structure
+                        else:
+                            match_line += "*"  # Regular G match
                     else:
                         match_line += "|"  # Regular match
                 else:
                     match_line += " "  # Mismatch or gap
+                
+                # Update original position counter if not a gap
+                if aligned_seq2[j] != '-':
+                    orig_pos += 1
             else:
                 match_line += " "  # Mismatch or gap
 
