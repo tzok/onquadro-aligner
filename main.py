@@ -139,15 +139,15 @@ def parse_quadruplex_object(data):
     """
     try:
         # Extract required fields
-        sequence = str(data.get("sequence", "")).replace('-', '&')
-        structure = str(data.get("structure", "")).replace('-', '&')
+        sequence = str(data.get("sequence", "")).replace("-", "&")
+        structure = str(data.get("structure", "")).replace("-", "&")
 
         # Handle chi field - ensure it's a string
         chi_data = data.get("chi", "")
         if not isinstance(chi_data, str):
-            chi = str(chi_data).replace('-', '&')
+            chi = str(chi_data).replace("-", "&")
         else:
-            chi = chi_data.replace('-', '&')
+            chi = chi_data.replace("-", "&")
 
         # Handle loop field - ensure it's a string
         loop_data = data.get("loop", "")
@@ -155,9 +155,9 @@ def parse_quadruplex_object(data):
             if isinstance(loop_data, list):
                 loop = "&".join(str(x) for x in loop_data)
             else:
-                loop = str(loop_data).replace('-', '&')
+                loop = str(loop_data).replace("-", "&")
         else:
-            loop = loop_data.replace('-', '&')
+            loop = loop_data.replace("-", "&")
 
         # Create and return the object
         return QuadruplexDotBracket(sequence, structure, chi, loop)
@@ -804,7 +804,9 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
         print(f"Source: {source_file}")
-        print(f"Quadruplex: {quad.sequence.replace('&', '-')}")  # Convert back for display
+        print(
+            f"Quadruplex: {quad.sequence.replace('&', '-')}"
+        )  # Convert back for display
 
         # Display the alignment
         print(f"Sequence:   {aligned_seq1}")
@@ -822,7 +824,9 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
         print(f"            {match_line}")
         print(f"Quadruplex: {aligned_seq2}")
-        print(f"Structure:  {quad.structure.replace('&', '-')}")  # Convert back for display
+        print(
+            f"Structure:  {quad.structure.replace('&', '-')}"
+        )  # Convert back for display
         print(f"Chi:        {quad.chi.replace('&', '-')}")  # Convert back for display
         print(f"Loop:       {quad.loop.replace('&', '-')}")  # Convert back for display
 
