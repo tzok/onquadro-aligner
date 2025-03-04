@@ -242,7 +242,7 @@ def align_sequences(
 
     Uses dynamic programming with beam search to find multiple optimal and suboptimal
     alignments that maximize the score, with special consideration for G nucleotides.
-    Gives bonus for G matches where the structure is not a dot.
+    Gives bonus for G matches where the structure contains a letter.
 
     Args:
         seq1, seq2: The sequences to align
@@ -440,7 +440,7 @@ def calculate_alignment_score(
     Calculate the score for an alignment based on matches, mismatches, gaps,
     and consecutive G bonuses. Treats T and U as matches.
     Penalizes matches against ampersand characters more heavily.
-    Gives bonus for G matches where the structure is not a dot.
+    Gives bonus for G matches where the structure contains a letter.
 
     Args:
         aligned_seq1, aligned_seq2: The aligned sequences
@@ -477,9 +477,9 @@ def calculate_alignment_score(
                     orig_pos = orig_positions[i]
                     if (
                         orig_pos < len(quad_structure)
-                        and quad_structure[orig_pos] != "."
+                        and quad_structure[orig_pos].isalpha()
                     ):
-                        # Additional bonus for G with non-dot structure
+                        # Additional bonus for G with letter in structure
                         base_score += 2
 
                 # Consecutive G bonus
@@ -681,7 +681,7 @@ def compute_alignment_score_matrix(seq1, seq2, quad_structure=None):
     """
     Compute the alignment score matrix for two sequences.
     Treats T and U as matches.
-    Gives bonus for G matches where the structure is not a dot.
+    Gives bonus for G matches where the structure contains a letter.
 
     Args:
         seq1, seq2: The sequences to align
@@ -742,13 +742,13 @@ def compute_alignment_score_matrix(seq1, seq2, quad_structure=None):
                             seq1, seq2, i - 1, j - 1, consecutive_g_count
                         )
 
-                        # Add bonus for non-dot structure
+                        # Add bonus for letter in structure
                         if (
                             quad_structure
                             and j - 1 < len(quad_structure)
-                            and quad_structure[j - 1] != "."
+                            and quad_structure[j - 1].isalpha()
                         ):
-                            match_score += 2  # Bonus for G with non-dot structure
+                            match_score += 2  # Bonus for G with letter in structure
 
                         diagonal_score = score_matrix[i - 1][j - 1] + match_score
                     else:
@@ -869,7 +869,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
     """
     Display ranked alignments against quadruplexes.
     Treats T and U as matches.
-    Highlights G matches with non-dot structure.
+    Highlights G matches with letter in structure.
 
     Args:
         ranked_alignments: List of tuples (quadruplex, source_file, segment_num, aligned_seq1, aligned_seq2, score)
@@ -921,13 +921,13 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
                 if is_match:
                     if aligned_seq1[j] == "G" and aligned_seq2[j] == "G":
-                        # Check if this G has a non-dot structure
+                        # Check if this G has a letter in structure
                         if (
                             aligned_seq2[j] != "-"
                             and orig_pos < len(quad.structure)
-                            and quad.structure[orig_pos] != "."
+                            and quad.structure[orig_pos].isalpha()
                         ):
-                            match_line += "#"  # Special indicator for G matches with non-dot structure
+                            match_line += "#"  # Special indicator for G matches with letter in structure
                         else:
                             match_line += "*"  # Regular G match
                     else:
