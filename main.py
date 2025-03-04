@@ -828,7 +828,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
             for j in range(min(len(aligned_seq1), len(aligned_seq2)))
             if aligned_seq1[j] == "G" and aligned_seq2[j] == "G"
         )
-        
+
         print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
         print(f"Source: {source_file}")
         print(f"Quadruplex: {quad.sequence}")
