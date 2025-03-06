@@ -794,7 +794,7 @@ def main():
     # Generate tetrad combinations
     all_tetrad_combinations = generate_tetrad_combinations(sequence)
     print(f"\nFound {len(all_tetrad_combinations)} possible tetrad combinations")
-    
+
     # Filter to unique compressed representations
     unique_compressed = {}
     for combo, str_repr, compressed_repr in all_tetrad_combinations:
@@ -802,10 +802,12 @@ def main():
         compressed_key = tuple(compressed_repr)
         if compressed_key not in unique_compressed:
             unique_compressed[compressed_key] = (combo, str_repr, compressed_repr)
-    
+
     # Convert back to list
     tetrad_combinations = list(unique_compressed.values())
-    print(f"After filtering duplicates: {len(tetrad_combinations)} unique tetrad patterns")
+    print(
+        f"After filtering duplicates: {len(tetrad_combinations)} unique tetrad patterns"
+    )
 
     # Display the combinations (limit based on user preference)
     display_limit = min(args.combinations, len(tetrad_combinations))
