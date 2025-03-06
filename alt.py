@@ -1135,7 +1135,7 @@ def generate_sequence_alignment(
         tuple: (aligned_seq, aligned_quad_seq, match_line, aligned_structures) showing the sequence alignment
     """
     aligned_combo, aligned_quad, match_line = structure_alignment
-    
+
     # Extract letter positions from both structures
     combo_letter_positions = {}
     for i, char in enumerate(combination_repr):
@@ -1144,7 +1144,7 @@ def generate_sequence_alignment(
             if letter not in combo_letter_positions:
                 combo_letter_positions[letter] = []
             combo_letter_positions[letter].append(i)
-    
+
     quad_letter_positions = {}
     for i, char in enumerate(quadruplex.structure):
         if char.isalpha():
@@ -1152,71 +1152,94 @@ def generate_sequence_alignment(
             if letter not in quad_letter_positions:
                 quad_letter_positions[letter] = []
             quad_letter_positions[letter].append(i)
-    
+
     # Find G positions in the input sequence
-    g_positions_input = [i for i, nucleotide in enumerate(sequence.upper()) if nucleotide == "G"]
-    
+    g_positions_input = [
+        i for i, nucleotide in enumerate(sequence.upper()) if nucleotide == "G"
+    ]
+
     # Find G positions in the quadruplex sequence
-    g_positions_quad = [i for i, nucleotide in enumerate(quadruplex.sequence.upper()) if nucleotide == "G"]
-    
+    g_positions_quad = [
+        i
+        for i, nucleotide in enumerate(quadruplex.sequence.upper())
+        if nucleotide == "G"
+    ]
+
     # Map G positions to structure letters
     input_g_to_letter = {}
     g_index = 0
     for i, pos in enumerate(g_positions_input):
         if g_index < len(g_positions_input) and g_index < len(combination_repr):
-            for j in range(pos, min(len(combination_repr), pos+2)):
+            for j in range(pos, min(len(combination_repr), pos + 2)):
                 if j < len(combination_repr) and combination_repr[j].isalpha():
                     input_g_to_letter[pos] = combination_repr[j]
                     g_index += 1
                     break
-    
+
     quad_g_to_letter = {}
     g_index = 0
     for i, pos in enumerate(g_positions_quad):
         if g_index < len(g_positions_quad) and g_index < len(quadruplex.structure):
-            for j in range(pos, min(len(quadruplex.structure), pos+2)):
+            for j in range(pos, min(len(quadruplex.structure), pos + 2)):
                 if j < len(quadruplex.structure) and quadruplex.structure[j].isalpha():
                     quad_g_to_letter[pos] = quadruplex.structure[j].lower()
                     g_index += 1
                     break
-    
+
     # Create position mappings based on matching structure letters
     letter_mappings = {}
-    for letter in set(combo_letter_positions.keys()) & set(quad_letter_positions.keys()):
-        letter_mappings[letter] = (combo_letter_positions[letter], quad_letter_positions[letter])
-    
+    for letter in set(combo_letter_positions.keys()) & set(
+        quad_letter_positions.keys()
+    ):
+        letter_mappings[letter] = (
+            combo_letter_positions[letter],
+            quad_letter_positions[letter],
+        )
+
     # Create sequence alignment based on structure letter mappings
     aligned_input_seq = []
     aligned_quad_seq = []
     aligned_input_struct = []
     aligned_quad_struct = []
     seq_match_line = []
-    
+
     # Initialize position trackers
     input_pos = 0
     quad_pos = 0
-    
+
     # Process each letter group in order
     for letter in sorted(letter_mappings.keys()):
         input_positions, quad_positions = letter_mappings[letter]
-        
+
         # Find corresponding G positions for this letter
-        input_g_for_letter = [pos for pos, ltr in input_g_to_letter.items() if ltr.lower() == letter]
-        quad_g_for_letter = [pos for pos, ltr in quad_g_to_letter.items() if ltr.lower() == letter]
-        
+        input_g_for_letter = [
+            pos for pos, ltr in input_g_to_letter.items() if ltr.lower() == letter
+        ]
+        quad_g_for_letter = [
+            pos for pos, ltr in quad_g_to_letter.items() if ltr.lower() == letter
+        ]
+
         # Add gaps until we reach the first position of this letter group
         while input_pos < min(input_positions) if input_positions else len(sequence):
             if input_pos < len(sequence):
                 aligned_input_seq.append(sequence[input_pos])
-                aligned_input_struct.append(combination_repr[input_pos] if input_pos < len(combination_repr) else ".")
+                aligned_input_struct.append(
+                    combination_repr[input_pos]
+                    if input_pos < len(combination_repr)
+                    else "."
+                )
                 aligned_quad_seq.append("-")
                 aligned_quad_struct.append("-")
                 seq_match_line.append(" ")
                 input_pos += 1
             else:
                 break
-        
-        while quad_pos < min(quad_positions) if quad_positions else len(quadruplex.sequence):
+
+        while (
+            quad_pos < min(quad_positions)
+            if quad_positions
+            else len(quadruplex.sequence)
+        ):
             if quad_pos < len(quadruplex.sequence):
                 aligned_input_seq.append("-")
                 aligned_input_struct.append("-")
@@ -1226,7 +1249,7 @@ def generate_sequence_alignment(
                 quad_pos += 1
             else:
                 break
-        
+
         # Align the G positions for this letter
         max_g_count = max(len(input_g_for_letter), len(quad_g_for_letter))
         for i in range(max_g_count):
@@ -1234,14 +1257,18 @@ def generate_sequence_alignment(
             if i < len(input_g_for_letter) and input_g_for_letter[i] < len(sequence):
                 g_pos = input_g_for_letter[i]
                 aligned_input_seq.append(sequence[g_pos])
-                aligned_input_struct.append(combination_repr[g_pos] if g_pos < len(combination_repr) else ".")
+                aligned_input_struct.append(
+                    combination_repr[g_pos] if g_pos < len(combination_repr) else "."
+                )
                 input_pos = g_pos + 1
             else:
                 aligned_input_seq.append("-")
                 aligned_input_struct.append("-")
-            
+
             # Add quad G if available
-            if i < len(quad_g_for_letter) and quad_g_for_letter[i] < len(quadruplex.sequence):
+            if i < len(quad_g_for_letter) and quad_g_for_letter[i] < len(
+                quadruplex.sequence
+            ):
                 g_pos = quad_g_for_letter[i]
                 aligned_quad_seq.append(quadruplex.sequence[g_pos])
                 aligned_quad_struct.append(quadruplex.structure[g_pos])
@@ -1249,29 +1276,40 @@ def generate_sequence_alignment(
             else:
                 aligned_quad_seq.append("-")
                 aligned_quad_struct.append("-")
-            
+
             # Add match line
-            if (i < len(input_g_for_letter) and i < len(quad_g_for_letter) and 
-                input_g_for_letter[i] < len(sequence) and quad_g_for_letter[i] < len(quadruplex.sequence)):
-                if sequence[input_g_for_letter[i]].upper() == quadruplex.sequence[quad_g_for_letter[i]].upper():
+            if (
+                i < len(input_g_for_letter)
+                and i < len(quad_g_for_letter)
+                and input_g_for_letter[i] < len(sequence)
+                and quad_g_for_letter[i] < len(quadruplex.sequence)
+            ):
+                if (
+                    sequence[input_g_for_letter[i]].upper()
+                    == quadruplex.sequence[quad_g_for_letter[i]].upper()
+                ):
                     seq_match_line.append("|")
-                elif (sequence[input_g_for_letter[i]].upper() in "TU" and 
-                      quadruplex.sequence[quad_g_for_letter[i]].upper() in "TU"):
+                elif (
+                    sequence[input_g_for_letter[i]].upper() in "TU"
+                    and quadruplex.sequence[quad_g_for_letter[i]].upper() in "TU"
+                ):
                     seq_match_line.append("|")  # T and U are considered matches
                 else:
                     seq_match_line.append(" ")
             else:
                 seq_match_line.append(" ")
-    
+
     # Add any remaining positions
     while input_pos < len(sequence):
         aligned_input_seq.append(sequence[input_pos])
-        aligned_input_struct.append(combination_repr[input_pos] if input_pos < len(combination_repr) else ".")
+        aligned_input_struct.append(
+            combination_repr[input_pos] if input_pos < len(combination_repr) else "."
+        )
         aligned_quad_seq.append("-")
         aligned_quad_struct.append("-")
         seq_match_line.append(" ")
         input_pos += 1
-    
+
     while quad_pos < len(quadruplex.sequence):
         aligned_input_seq.append("-")
         aligned_input_struct.append("-")
@@ -1279,13 +1317,13 @@ def generate_sequence_alignment(
         aligned_quad_struct.append(quadruplex.structure[quad_pos])
         seq_match_line.append(" ")
         quad_pos += 1
-    
+
     # Convert to strings
     aligned_input_seq_str = "".join(aligned_input_seq)
     aligned_quad_seq_str = "".join(aligned_quad_seq)
     seq_match_line_str = "".join(seq_match_line)
     aligned_structures = ("".join(aligned_input_struct), "".join(aligned_quad_struct))
-    
+
     return (
         aligned_input_seq_str,
         aligned_quad_seq_str,
