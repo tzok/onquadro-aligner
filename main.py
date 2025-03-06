@@ -204,14 +204,15 @@ def validate_sequence(sequence):
     return True
 
 
-def calculate_score(seq1, seq2, i, j, consecutive_g_count):
+def calculate_score(seq1, seq2, i, j, consecutive_g_count, quad_structure=None):
     """
-    Calculate alignment score with bonus for consecutive Gs.
+    Calculate alignment score with bonus for consecutive Gs and matching structure letters.
 
     Args:
         seq1, seq2: The sequences being aligned
         i, j: Current positions in the sequences
         consecutive_g_count: Number of consecutive G matches so far
+        quad_structure: Optional structure string from quadruplex
 
     Returns:
         Score for this position
@@ -227,6 +228,10 @@ def calculate_score(seq1, seq2, i, j, consecutive_g_count):
         if seq1[i].upper() == "G":
             match_score += 1  # Basic bonus for G
             match_score += consecutive_g_count  # Additional bonus for consecutive Gs
+            
+            # Additional bonus for G with letter in structure
+            if quad_structure and j < len(quad_structure) and quad_structure[j].isalpha():
+                match_score += 3  # Higher bonus for G with letter in structure
 
         return match_score
     else:
@@ -243,6 +248,7 @@ def align_sequences(
     Uses dynamic programming with beam search to find multiple optimal and suboptimal
     alignments that maximize the score, with special consideration for G nucleotides.
     Gives bonus for G matches where the structure contains a letter.
+    Prioritizes matching G nucleotides that have the same letter in the structure field.
 
     Args:
         seq1, seq2: The sequences to align
@@ -266,7 +272,7 @@ def align_sequences(
         optimal_score = score_matrix[m][n]
     else:
         # Compute the score matrix
-        score_matrix, optimal_score = compute_alignment_score_matrix(seq1, seq2)
+        score_matrix, optimal_score = compute_alignment_score_matrix(seq1, seq2, quad_structure)
 
     # Calculate the minimum acceptable score
     min_score_threshold = optimal_score * score_threshold
@@ -337,6 +343,16 @@ def align_sequences(
                     move_score = 2  # Basic match score
                     if is_g_match:
                         move_score += 1 + consecutive_g_bonus  # G match bonus
+                        
+                        # Additional bonus for G with letter in structure
+                        if quad_structure and j - 1 < len(quad_structure) and quad_structure[j - 1].isalpha():
+                            move_score += 3  # Higher bonus for G with letter in structure
+                            
+                            # Extra bonus for matching the same letter in structure
+                            if i > 1 and j > 1 and seq1[i - 2] == "G" and seq2[j - 2] == "G":
+                                if (j - 2 < len(quad_structure) and quad_structure[j - 2].isalpha() and 
+                                    quad_structure[j - 2].lower() == quad_structure[j - 1].lower()):
+                                    move_score += 5  # Bonus for matching the same letter
                 else:  # Mismatch
                     move_score = -1
 
@@ -441,6 +457,7 @@ def calculate_alignment_score(
     and consecutive G bonuses. Treats T and U as matches.
     Penalizes matches against ampersand characters more heavily.
     Gives bonus for G matches where the structure contains a letter.
+    Prioritizes matching G nucleotides that have the same letter in the structure field.
 
     Args:
         aligned_seq1, aligned_seq2: The aligned sequences
@@ -452,12 +469,14 @@ def calculate_alignment_score(
     """
     score = 0
     consecutive_g_count = 0
+    prev_structure_letter = None
 
     for i in range(min(len(aligned_seq1), len(aligned_seq2))):
         # Check for ampersand in either sequence - penalize more heavily
         if aligned_seq1[i] == "&" or aligned_seq2[i] == "&":
             score -= 3  # Higher penalty for ampersand
             consecutive_g_count = 0
+            prev_structure_letter = None
             continue
 
         # Check for exact match or T-U match
@@ -475,12 +494,22 @@ def calculate_alignment_score(
                 # Check if we have structure information and this isn't a gap
                 if quad_structure and orig_positions and aligned_seq2[i] != "-":
                     orig_pos = orig_positions[i]
-                    if (
-                        orig_pos < len(quad_structure)
-                        and quad_structure[orig_pos].isalpha()
-                    ):
+                    if orig_pos >= 0 and orig_pos < len(quad_structure) and quad_structure[orig_pos].isalpha():
                         # Additional bonus for G with letter in structure
-                        base_score += 2
+                        base_score += 3
+                        
+                        # Check for consecutive same letter matches
+                        current_letter = quad_structure[orig_pos].lower()
+                        if prev_structure_letter and prev_structure_letter == current_letter:
+                            # Extra bonus for matching the same letter in structure
+                            base_score += 5
+                        
+                        # Update previous letter
+                        prev_structure_letter = current_letter
+                    else:
+                        prev_structure_letter = None
+                else:
+                    prev_structure_letter = None
 
                 # Consecutive G bonus
                 consecutive_g_count += 1
@@ -489,11 +518,13 @@ def calculate_alignment_score(
                 )  # Additional bonus for consecutive Gs
             else:
                 consecutive_g_count = 0
+                prev_structure_letter = None
             score += base_score
         else:
             # Mismatch
             score -= 1
             consecutive_g_count = 0
+            prev_structure_letter = None
 
     return score
 
@@ -682,6 +713,7 @@ def compute_alignment_score_matrix(seq1, seq2, quad_structure=None):
     Compute the alignment score matrix for two sequences.
     Treats T and U as matches.
     Gives bonus for G matches where the structure contains a letter.
+    Prioritizes matching G nucleotides that have the same letter in the structure field.
 
     Args:
         seq1, seq2: The sequences to align
@@ -700,6 +732,9 @@ def compute_alignment_score_matrix(seq1, seq2, quad_structure=None):
 
     # Initialize consecutive G tracking matrix
     g_count_matrix = [[0 for _ in range(n + 1)] for _ in range(m + 1)]
+    
+    # Initialize structure letter tracking matrix
+    struct_letter_matrix = [[None for _ in range(n + 1)] for _ in range(m + 1)]
 
     # Initialize first row and column with gap penalties
     for i in range(1, m + 1):
@@ -739,16 +774,22 @@ def compute_alignment_score_matrix(seq1, seq2, quad_structure=None):
                     if is_match:
                         # Base score for G match
                         match_score = calculate_score(
-                            seq1, seq2, i - 1, j - 1, consecutive_g_count
+                            seq1, seq2, i - 1, j - 1, consecutive_g_count, quad_structure
                         )
 
-                        # Add bonus for letter in structure
-                        if (
-                            quad_structure
-                            and j - 1 < len(quad_structure)
-                            and quad_structure[j - 1].isalpha()
-                        ):
-                            match_score += 2  # Bonus for G with letter in structure
+                        # Check for structure letter
+                        current_letter = None
+                        if quad_structure and j - 1 < len(quad_structure) and quad_structure[j - 1].isalpha():
+                            current_letter = quad_structure[j - 1].lower()
+                            match_score += 3  # Bonus for G with letter in structure
+                            
+                            # Check if previous G had the same letter in structure
+                            prev_letter = struct_letter_matrix[i-1][j-1]
+                            if prev_letter and prev_letter == current_letter:
+                                match_score += 5  # Bonus for matching the same letter
+                        
+                        # Store the current structure letter
+                        struct_letter_matrix[i][j] = current_letter
 
                         diagonal_score = score_matrix[i - 1][j - 1] + match_score
                     else:
@@ -759,9 +800,10 @@ def compute_alignment_score_matrix(seq1, seq2, quad_structure=None):
                 g_count_matrix[i][j] = g_count_matrix[i - 1][j - 1] + 1
             else:
                 diagonal_score = score_matrix[i - 1][j - 1] + calculate_score(
-                    seq1, seq2, i - 1, j - 1, 0
+                    seq1, seq2, i - 1, j - 1, 0, quad_structure
                 )
                 g_count_matrix[i][j] = 0
+                struct_letter_matrix[i][j] = None
 
             up_score = score_matrix[i - 1][j] - 1  # Gap in seq2
             left_score = score_matrix[i][j - 1] - 1  # Gap in seq1
@@ -870,6 +912,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
     Display ranked alignments against quadruplexes.
     Treats T and U as matches.
     Highlights G matches with letter in structure.
+    Shows consecutive G matches with the same structure letter.
 
     Args:
         ranked_alignments: List of tuples (quadruplex, source_file, segment_num, aligned_seq1, aligned_seq2, score)
@@ -885,6 +928,13 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
     print(
         f"\nTop {len(results_to_display)} alignments (out of {len(ranked_alignments)} total):"
     )
+    
+    # Display legend
+    print("\nLegend:")
+    print("  | - Match")
+    print("  * - G match")
+    print("  # - G match with letter in structure")
+    print("  $ - G match with same letter in structure as previous G")
 
     for i, (
         quad,
@@ -911,6 +961,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
         match_line = ""
         # Track position in the original quadruplex sequence for structure lookup
         orig_pos = 0
+        prev_letter = None
 
         for j in range(len(aligned_seq1)):
             if j < len(aligned_seq2):
@@ -927,19 +978,28 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
                             and orig_pos < len(quad.structure)
                             and quad.structure[orig_pos].isalpha()
                         ):
-                            match_line += "#"  # Special indicator for G matches with letter in structure
+                            current_letter = quad.structure[orig_pos].lower()
+                            if prev_letter and prev_letter == current_letter:
+                                match_line += "$"  # Special indicator for G matches with same letter as previous
+                            else:
+                                match_line += "#"  # Special indicator for G matches with letter in structure
+                            prev_letter = current_letter
                         else:
                             match_line += "*"  # Regular G match
+                            prev_letter = None
                     else:
                         match_line += "|"  # Regular match
+                        prev_letter = None
                 else:
                     match_line += " "  # Mismatch or gap
+                    prev_letter = None
 
                 # Update original position counter if not a gap
                 if aligned_seq2[j] != "-":
                     orig_pos += 1
             else:
                 match_line += " "  # Mismatch or gap
+                prev_letter = None
 
         print(f"            {match_line}")
         print(f"Quadruplex: {aligned_seq2}")
