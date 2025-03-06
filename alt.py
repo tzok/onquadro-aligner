@@ -740,12 +740,12 @@ def calculate_group_similarity(group1, group2):
 def generate_alignment(combination_repr, quadruplex, mapping=None):
     """
     Generate an alignment-like string between the combination and quadruplex.
-    
+
     Args:
         combination_repr: String representation of a tetrad combination
         quadruplex: QuadruplexDotBracket object
         mapping: Optional dictionary mapping letters in quadruplex to letters in combination
-        
+
     Returns:
         tuple: (aligned_combo, aligned_quad, match_line) where:
             - aligned_combo is the combination with gaps inserted
@@ -755,93 +755,93 @@ def generate_alignment(combination_repr, quadruplex, mapping=None):
     # Compress both structures into letter groups
     combo_groups = compress_structure(combination_repr)
     quad_groups = compress_structure(quadruplex.structure)
-    
+
     # Get the concatenated representations
     combo_concat = concatenate_groups(combo_groups)
     quad_concat = concatenate_groups(quad_groups)
-    
+
     # If a mapping is provided, apply it to the quadruplex
     if mapping:
-        mapped_quad_concat = ''.join(mapping.get(c, c) for c in quad_concat)
+        mapped_quad_concat = "".join(mapping.get(c, c) for c in quad_concat)
     else:
         mapped_quad_concat = quad_concat
-    
+
     # Create alignment strings
     aligned_combo = []
     aligned_quad = []
     match_line = []
-    
+
     # Track positions in the original strings
     i, j = 0, 0
-    
+
     # Find the longest common subsequence path
     lcs_path = get_lcs_path(combo_concat, mapped_quad_concat)
-    
+
     for move in lcs_path:
-        if move == 'match':
+        if move == "match":
             # Both strings advance with a match
             aligned_combo.append(combo_concat[i])
             aligned_quad.append(quad_concat[j])
-            match_line.append('|')
+            match_line.append("|")
             i += 1
             j += 1
-        elif move == 'combo_gap':
+        elif move == "combo_gap":
             # Insert a gap in the combination
-            aligned_combo.append('-')
+            aligned_combo.append("-")
             aligned_quad.append(quad_concat[j])
-            match_line.append(' ')
+            match_line.append(" ")
             j += 1
-        elif move == 'quad_gap':
+        elif move == "quad_gap":
             # Insert a gap in the quadruplex
             aligned_combo.append(combo_concat[i])
-            aligned_quad.append('-')
-            match_line.append(' ')
+            aligned_quad.append("-")
+            match_line.append(" ")
             i += 1
-    
+
     # Convert to strings
-    aligned_combo = ''.join(aligned_combo)
-    aligned_quad = ''.join(aligned_quad)
-    match_line = ''.join(match_line)
-    
+    aligned_combo = "".join(aligned_combo)
+    aligned_quad = "".join(aligned_quad)
+    match_line = "".join(match_line)
+
     return aligned_combo, aligned_quad, match_line
 
 
 def get_lcs_path(str1, str2):
     """
     Get the path of operations to transform str1 into str2 using LCS.
-    
+
     Args:
         str1, str2: Two strings
-        
+
     Returns:
         list: List of operations ('match', 'combo_gap', or 'quad_gap')
     """
     m, n = len(str1), len(str2)
-    
+
     # Build the LCS matrix
     dp = [[0] * (n + 1) for _ in range(m + 1)]
     for i in range(1, m + 1):
         for j in range(1, n + 1):
-            if str1[i-1] == str2[j-1]:
-                dp[i][j] = dp[i-1][j-1] + 1
+            if str1[i - 1] == str2[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
             else:
-                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-    
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+
     # Backtrack to find the path
     path = []
     i, j = m, n
     while i > 0 or j > 0:
-        if i > 0 and j > 0 and str1[i-1] == str2[j-1]:
-            path.append('match')
+        if i > 0 and j > 0 and str1[i - 1] == str2[j - 1]:
+            path.append("match")
             i -= 1
             j -= 1
-        elif j > 0 and (i == 0 or dp[i][j-1] >= dp[i-1][j]):
-            path.append('combo_gap')
+        elif j > 0 and (i == 0 or dp[i][j - 1] >= dp[i - 1][j]):
+            path.append("combo_gap")
             j -= 1
-        elif i > 0 and (j == 0 or dp[i][j-1] < dp[i-1][j]):
-            path.append('quad_gap')
+        elif i > 0 and (j == 0 or dp[i][j - 1] < dp[i - 1][j]):
+            path.append("quad_gap")
             i -= 1
-    
+
     # Reverse the path to get the correct order
     path.reverse()
     return path
@@ -969,17 +969,17 @@ def process_combination_comparison(args):
             compressed_similarity = compare_compressed_lists(
                 compressed_repr, quad_compressed
             )
-            
+
             # Get unique letters in each structure
             combo_concat = concatenate_groups(compressed_repr)
             quad_concat = concatenate_groups(quad_compressed)
             combo_letters = get_unique_letters(combo_concat)
             quad_letters = get_unique_letters(quad_concat)
-            
+
             # Find the best mapping for alignment
             best_mapping = None
             best_score = -1
-            
+
             if len(quad_letters) >= len(combo_letters):
                 mappings = generate_letter_mappings(combo_letters, quad_letters)
                 for mapping in mappings:
@@ -987,12 +987,19 @@ def process_combination_comparison(args):
                     if score > best_score:
                         best_score = score
                         best_mapping = mapping
-            
+
             # Generate alignment
             alignment = generate_alignment(str_repr, quad, best_mapping)
 
             quad_scores.append(
-                (concat_similarity, compressed_similarity, quad_index, quad, sources, alignment)
+                (
+                    concat_similarity,
+                    compressed_similarity,
+                    quad_index,
+                    quad,
+                    sources,
+                    alignment,
+                )
             )
 
     # Sort by compressed similarity score (highest first)
@@ -1001,21 +1008,23 @@ def process_combination_comparison(args):
     return (combination_index, combo, str_repr, compressed_repr, quad_scores)
 
 
-def generate_sequence_alignment(sequence, quadruplex, combination_repr, structure_alignment):
+def generate_sequence_alignment(
+    sequence, quadruplex, combination_repr, structure_alignment
+):
     """
     Generate a detailed alignment between the original sequence and quadruplex sequence.
-    
+
     Args:
         sequence: Original DNA/RNA sequence
         quadruplex: QuadruplexDotBracket object
         combination_repr: String representation of the tetrad combination
         structure_alignment: Tuple of (aligned_combo, aligned_quad, match_line)
-        
+
     Returns:
         tuple: (aligned_seq, aligned_quad_seq, match_line) showing the sequence alignment
     """
     aligned_combo, aligned_quad, match_line = structure_alignment
-    
+
     # Create a mapping from positions in combination_repr to positions in sequence
     combo_to_seq = {}
     seq_pos = 0
@@ -1023,34 +1032,34 @@ def generate_sequence_alignment(sequence, quadruplex, combination_repr, structur
         if char.isalpha():  # This is a G position
             combo_to_seq[i] = seq_pos
             seq_pos += 1
-        elif char == '.':  # This is a non-G position
+        elif char == ".":  # This is a non-G position
             combo_to_seq[i] = seq_pos
             seq_pos += 1
-    
+
     # Create a mapping from positions in quad.structure to positions in quad.sequence
     quad_to_seq = {}
     seq_pos = 0
     for i, char in enumerate(quadruplex.structure):
-        if char != '-' and char != '&':  # Skip linkers
+        if char != "-" and char != "&":  # Skip linkers
             quad_to_seq[i] = seq_pos
             seq_pos += 1
-    
+
     # Generate the sequence alignment
     aligned_seq = []
     aligned_quad_seq = []
     seq_match_line = []
-    
+
     combo_pos = 0
     quad_pos = 0
-    
+
     for i in range(len(aligned_combo)):
-        if aligned_combo[i] == '-':
+        if aligned_combo[i] == "-":
             # Gap in combination
-            aligned_seq.append('-')
-            if aligned_quad[i] == '-':
+            aligned_seq.append("-")
+            if aligned_quad[i] == "-":
                 # Gap in both (shouldn't happen)
-                aligned_quad_seq.append('-')
-                seq_match_line.append(' ')
+                aligned_quad_seq.append("-")
+                seq_match_line.append(" ")
             else:
                 # Get the corresponding position in quadruplex sequence
                 struct_pos = quad_pos
@@ -1059,23 +1068,23 @@ def generate_sequence_alignment(sequence, quadruplex, combination_repr, structur
                     if seq_pos is not None and seq_pos < len(quadruplex.sequence):
                         aligned_quad_seq.append(quadruplex.sequence[seq_pos])
                     else:
-                        aligned_quad_seq.append('?')
+                        aligned_quad_seq.append("?")
                 else:
-                    aligned_quad_seq.append('?')
-                seq_match_line.append(' ')
+                    aligned_quad_seq.append("?")
+                seq_match_line.append(" ")
                 quad_pos += 1
-        elif aligned_quad[i] == '-':
+        elif aligned_quad[i] == "-":
             # Gap in quadruplex
             if combo_pos < len(combination_repr):
                 seq_pos = combo_to_seq.get(combo_pos, None)
                 if seq_pos is not None and seq_pos < len(sequence):
                     aligned_seq.append(sequence[seq_pos])
                 else:
-                    aligned_seq.append('?')
+                    aligned_seq.append("?")
             else:
-                aligned_seq.append('?')
-            aligned_quad_seq.append('-')
-            seq_match_line.append(' ')
+                aligned_seq.append("?")
+            aligned_quad_seq.append("-")
+            seq_match_line.append(" ")
             combo_pos += 1
         else:
             # Match or mismatch
@@ -1084,31 +1093,31 @@ def generate_sequence_alignment(sequence, quadruplex, combination_repr, structur
                 if seq_pos is not None and seq_pos < len(sequence):
                     aligned_seq.append(sequence[seq_pos])
                 else:
-                    aligned_seq.append('?')
+                    aligned_seq.append("?")
             else:
-                aligned_seq.append('?')
-            
+                aligned_seq.append("?")
+
             if quad_pos < len(quadruplex.structure):
                 seq_pos = quad_to_seq.get(quad_pos, None)
                 if seq_pos is not None and seq_pos < len(quadruplex.sequence):
                     aligned_quad_seq.append(quadruplex.sequence[seq_pos])
                 else:
-                    aligned_quad_seq.append('?')
+                    aligned_quad_seq.append("?")
             else:
-                aligned_quad_seq.append('?')
-            
+                aligned_quad_seq.append("?")
+
             # Check if the nucleotides match
             if aligned_seq[-1] == aligned_quad_seq[-1]:
-                seq_match_line.append('|')
-            elif (aligned_seq[-1] in 'TU' and aligned_quad_seq[-1] in 'TU'):
-                seq_match_line.append('|')  # T and U are considered matches
+                seq_match_line.append("|")
+            elif aligned_seq[-1] in "TU" and aligned_quad_seq[-1] in "TU":
+                seq_match_line.append("|")  # T and U are considered matches
             else:
-                seq_match_line.append(' ')
-            
+                seq_match_line.append(" ")
+
             combo_pos += 1
             quad_pos += 1
-    
-    return ''.join(aligned_seq), ''.join(aligned_quad_seq), ''.join(seq_match_line)
+
+    return "".join(aligned_seq), "".join(aligned_quad_seq), "".join(seq_match_line)
 
 
 def find_best_matches_parallel(
@@ -1382,18 +1391,20 @@ def main():
                             best_mapping.get(c, c) for c in quad_concat
                         )
                         print(f"    Mapped: {mapped_concat}")
-                
+
                 # Display the alignment
                 aligned_combo, aligned_quad, match_line = alignment
                 print(f"    Structure Alignment:")
                 print(f"      Combination: {aligned_combo}")
                 print(f"      Match:       {match_line}")
                 print(f"      Quadruplex:  {aligned_quad}")
-                
+
                 # Generate and display sequence alignment
-                seq_alignment = generate_sequence_alignment(sequence, quad, str_repr, alignment)
+                seq_alignment = generate_sequence_alignment(
+                    sequence, quad, str_repr, alignment
+                )
                 aligned_seq, aligned_quad_seq, seq_match_line = seq_alignment
-                
+
                 print(f"    Sequence Alignment:")
                 print(f"      Input:      {aligned_seq}")
                 print(f"      Match:      {seq_match_line}")
