@@ -37,7 +37,8 @@ class QuadruplexDotBracket:
 
     def validate(self):
         """
-        Validate that all fields have the same length.
+        Validate that all fields have the same length and that the structure
+        doesn't contain consecutive identical letters.
 
         Returns:
             bool: True if valid, False otherwise
@@ -46,6 +47,14 @@ class QuadruplexDotBracket:
         fields = [self.sequence, self.structure, self.chi, self.loop]
         if len(set(len(field) for field in fields)) != 1:
             return False
+            
+        # Check for consecutive identical letters in structure
+        prev_char = None
+        for char in self.structure:
+            if char.isalpha() and char.lower() == prev_char:
+                # Found consecutive identical letters (e.g., "qq")
+                return False
+            prev_char = char.lower() if char.isalpha() else None
 
         return True
 
@@ -115,20 +124,58 @@ def read_quadruplex_json(file_path):
             if "quadruplexDotBracket" in data:
                 quad_data = data["quadruplexDotBracket"]
                 quad = parse_quadruplex_object(quad_data)
-                if quad and quad.validate():
-                    quadruplexes.append(quad)
+                if quad:
+                    if quad.validate():
+                        quadruplexes.append(quad)
+                    else:
+                        # Check specifically for consecutive letters
+                        has_consecutive = False
+                        prev_char = None
+                        for char in quad.structure:
+                            if char.isalpha() and char.lower() == prev_char:
+                                has_consecutive = True
+                                break
+                            prev_char = char.lower() if char.isalpha() else None
+                        
+                        if has_consecutive:
+                            print(
+                                f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
+                            )
+                        else:
+                            print(
+                                f"Warning: Invalid quadruplexDotBracket object found in {file_path} (fields have different lengths)"
+                            )
                 else:
                     print(
-                        f"Warning: Invalid quadruplexDotBracket object found in {file_path} (fields have different lengths or substring structure)"
+                        f"Warning: Failed to parse quadruplexDotBracket object in {file_path}"
                     )
             else:
                 # Try to parse as a direct quadruplex object
                 quad = parse_quadruplex_object(data)
-                if quad and quad.validate():
-                    quadruplexes.append(quad)
+                if quad:
+                    if quad.validate():
+                        quadruplexes.append(quad)
+                    else:
+                        # Check specifically for consecutive letters
+                        has_consecutive = False
+                        prev_char = None
+                        for char in quad.structure:
+                            if char.isalpha() and char.lower() == prev_char:
+                                has_consecutive = True
+                                break
+                            prev_char = char.lower() if char.isalpha() else None
+                        
+                        if has_consecutive:
+                            print(
+                                f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
+                            )
+                        else:
+                            print(
+                                f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths)"
+                            )
                 else:
                     print(
-                        f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths or substring structure)"
+                        f"Warning: Failed to parse quadruplex object in {file_path}"
                     )
         elif isinstance(data, list):
             # Array of objects - could be array of quadruplexDotBracket containers or direct objects
@@ -139,11 +186,30 @@ def read_quadruplex_json(file_path):
                 else:
                     quad = parse_quadruplex_object(item)
 
-                if quad and quad.validate():
-                    quadruplexes.append(quad)
+                if quad:
+                    if quad.validate():
+                        quadruplexes.append(quad)
+                    else:
+                        # Check specifically for consecutive letters
+                        has_consecutive = False
+                        prev_char = None
+                        for char in quad.structure:
+                            if char.isalpha() and char.lower() == prev_char:
+                                has_consecutive = True
+                                break
+                            prev_char = char.lower() if char.isalpha() else None
+                        
+                        if has_consecutive:
+                            print(
+                                f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
+                            )
+                        else:
+                            print(
+                                f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths)"
+                            )
                 else:
                     print(
-                        f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths or substring structure)"
+                        f"Warning: Failed to parse quadruplex object in {file_path}"
                     )
 
         return quadruplexes
