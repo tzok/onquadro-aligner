@@ -827,6 +827,13 @@ def parse_arguments():
         default=0,
         help="Number of processes to use (default: auto-detect)",
     )
+    parser.add_argument(
+        "-r",
+        "--results",
+        type=int,
+        default=10,
+        help="Number of top results to display in final ranking (default: 10)",
+    )
     return parser.parse_args()
 
 
@@ -922,8 +929,14 @@ def main():
             num_processes=args.processes,
         )
 
+        # Sort results by the best match score (highest first)
+        best_matches.sort(key=lambda x: x[4][0][0] if x[4] and x[4][0] else 0, reverse=True)
+        
+        # Limit to requested number of results
+        display_results = best_matches[:min(args.results, len(best_matches))]
+        
         # Display results
-        print(f"\nTop {len(best_matches)} combinations with best matches:")
+        print(f"\nTop {len(display_results)} combinations with best matches (out of {len(best_matches)} total):")
 
         for rank, (
             combination_index,
@@ -931,7 +944,7 @@ def main():
             str_repr,
             compressed_repr,
             quad_scores,
-        ) in enumerate(best_matches, 1):
+        ) in enumerate(display_results, 1):
             print(f"\nRank #{rank} - Combination {combination_index + 1}: {str_repr}")
             print(f"  Compressed: {compressed_repr}")
 
