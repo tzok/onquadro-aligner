@@ -361,10 +361,10 @@ def normalize_structure(structure):
     """
     Normalize a structure string by making all letters lowercase,
     removing linkers, and replacing non-letters with dots.
-    
+
     Args:
         structure: The structure string to normalize
-        
+
     Returns:
         str: Normalized structure string
     """
@@ -372,33 +372,33 @@ def normalize_structure(structure):
     for char in structure:
         if char.isalpha():
             result.append(char.lower())
-        elif char in '-&':
+        elif char in "-&":
             # Skip linkers
             continue
         else:
-            result.append('.')
-    
-    return ''.join(result)
+            result.append(".")
+
+    return "".join(result)
 
 
 def compare_combination_to_quadruplex(combination_repr, quadruplex):
     """
     Compare a tetrad combination representation against a QuadruplexDotBracket object.
-    
+
     Args:
         combination_repr: String representation of a tetrad combination
         quadruplex: QuadruplexDotBracket object
-        
+
     Returns:
         float: Similarity score between 0.0 and 1.0
     """
     # Normalize the quadruplex structure
     norm_structure = normalize_structure(quadruplex.structure)
-    
+
     # If lengths don't match, we need to align them
     if len(combination_repr) != len(norm_structure):
         return align_and_score_structures(combination_repr, norm_structure)
-    
+
     # If lengths match, we can do a direct comparison
     return score_matching_structures(combination_repr, norm_structure)
 
@@ -406,23 +406,23 @@ def compare_combination_to_quadruplex(combination_repr, quadruplex):
 def score_matching_structures(str1, str2):
     """
     Score two structures of the same length.
-    
+
     Args:
         str1, str2: Two structure strings of the same length
-        
+
     Returns:
         float: Similarity score between 0.0 and 1.0
     """
     if len(str1) != len(str2):
         raise ValueError("Structures must be of the same length")
-    
+
     total_positions = len(str1)
     if total_positions == 0:
         return 0.0
-    
+
     matches = 0
     letter_positions = []
-    
+
     # First pass: identify letter positions and exact matches
     for i in range(total_positions):
         # Both are letters - check if they match
@@ -438,10 +438,10 @@ def score_matching_structures(str1, str2):
         # Both are dots
         else:
             matches += 0.5  # Dots match dots with medium weight
-    
+
     # Weight letter positions more heavily
     letter_weight = 2.0 if letter_positions else 1.0
-    
+
     # Calculate final score
     score = matches / (total_positions * letter_weight)
     return min(1.0, score)  # Cap at 1.0
@@ -451,58 +451,58 @@ def align_and_score_structures(str1, str2):
     """
     Align two structures of different lengths and score their similarity.
     Uses a simplified alignment approach that prioritizes matching letter positions.
-    
+
     Args:
         str1, str2: Two structure strings that may have different lengths
-        
+
     Returns:
         float: Similarity score between 0.0 and 1.0
     """
     # Extract letter patterns (ignore dots)
-    pattern1 = ''.join([c for c in str1 if c.isalpha()])
-    pattern2 = ''.join([c for c in str2 if c.isalpha()])
-    
+    pattern1 = "".join([c for c in str1 if c.isalpha()])
+    pattern2 = "".join([c for c in str2 if c.isalpha()])
+
     if not pattern1 or not pattern2:
         # If either has no letters, score based on proportion of dots
-        dot_ratio = min(str1.count('.') / len(str1), str2.count('.') / len(str2))
+        dot_ratio = min(str1.count(".") / len(str1), str2.count(".") / len(str2))
         return dot_ratio * 0.5  # Lower score for dot-only matches
-    
+
     # Find longest common subsequence of letters
     lcs_length = longest_common_subsequence(pattern1, pattern2)
-    
+
     # Calculate letter pattern similarity
     pattern_similarity = lcs_length / max(len(pattern1), len(pattern2))
-    
+
     # Calculate overall structure similarity
     # Consider both letter pattern and overall length
     length_ratio = min(len(str1), len(str2)) / max(len(str1), len(str2))
-    
+
     # Weight pattern similarity more heavily
     final_score = (pattern_similarity * 0.8) + (length_ratio * 0.2)
-    
+
     return final_score
 
 
 def longest_common_subsequence(str1, str2):
     """
     Find the length of the longest common subsequence between two strings.
-    
+
     Args:
         str1, str2: Two strings
-        
+
     Returns:
         int: Length of the longest common subsequence
     """
     m, n = len(str1), len(str2)
     dp = [[0] * (n + 1) for _ in range(m + 1)]
-    
+
     for i in range(1, m + 1):
         for j in range(1, n + 1):
-            if str1[i-1] == str2[j-1]:
-                dp[i][j] = dp[i-1][j-1] + 1
+            if str1[i - 1] == str2[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
             else:
-                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-    
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+
     return dp[m][n]
 
 
@@ -609,37 +609,46 @@ def main():
     print(f"  Total unique structures: {len(quadruplexes)}")
     print(f"  DNA structures: {dna_count}")
     print(f"  RNA structures: {rna_count}")
-    
+
     # If we have both tetrad combinations and quadruplexes, compare them
     if tetrad_combinations and quadruplexes:
         print("\nComparing tetrad combinations to quadruplex structures...")
-        
+
         # Take the first few combinations for comparison
         combinations_to_compare = min(5, len(tetrad_combinations))
-        
+
         # Take the first few quadruplexes for comparison
         quadruplexes_to_compare = min(args.quadruplexes, len(quadruplexes))
-        
-        print(f"\nShowing top matches for {combinations_to_compare} combinations against {quadruplexes_to_compare} quadruplexes:")
-        
-        for i, (combo, str_repr) in enumerate(tetrad_combinations[:combinations_to_compare], 1):
+
+        print(
+            f"\nShowing top matches for {combinations_to_compare} combinations against {quadruplexes_to_compare} quadruplexes:"
+        )
+
+        for i, (combo, str_repr) in enumerate(
+            tetrad_combinations[:combinations_to_compare], 1
+        ):
             print(f"\nCombination {i}: {str_repr}")
-            
+
             # Compare this combination to each quadruplex
             quad_scores = []
-            for j, (quad, sources) in enumerate(quadruplexes[:quadruplexes_to_compare], 1):
+            for j, (quad, sources) in enumerate(
+                quadruplexes[:quadruplexes_to_compare], 1
+            ):
                 similarity = compare_combination_to_quadruplex(str_repr, quad)
                 quad_scores.append((similarity, j, quad, sources))
-            
+
             # Sort by similarity score (highest first)
             quad_scores.sort(reverse=True)
-            
+
             # Display top 3 matches
             for similarity, j, quad, sources in quad_scores[:3]:
                 print(f"  Match with quadruplex {j} (score: {similarity:.2f}):")
                 print(f"    Structure: {quad.structure}")
                 print(f"    Normalized: {normalize_structure(quad.structure)}")
-                print(f"    Source: {sources[0]}" + (f" (and {len(sources)-1} more)" if len(sources) > 1 else ""))
+                print(
+                    f"    Source: {sources[0]}"
+                    + (f" (and {len(sources) - 1} more)" if len(sources) > 1 else "")
+                )
 
 
 if __name__ == "__main__":
