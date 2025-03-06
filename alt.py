@@ -1035,7 +1035,7 @@ def main():
     if not is_valid:
         print(
             "Error: Invalid sequence. Please use only A, T, G, C, U, or N characters.",
-            file=sys.stderr
+            file=sys.stderr,
         )
         sys.exit(1)
 
