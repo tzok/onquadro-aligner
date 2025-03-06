@@ -47,7 +47,7 @@ class QuadruplexDotBracket:
         fields = [self.sequence, self.structure, self.chi, self.loop]
         if len(set(len(field) for field in fields)) != 1:
             return False
-            
+
         # Check for consecutive identical letters in structure
         prev_char = None
         for char in self.structure:
@@ -136,7 +136,7 @@ def read_quadruplex_json(file_path):
                                 has_consecutive = True
                                 break
                             prev_char = char.lower() if char.isalpha() else None
-                        
+
                         if has_consecutive:
                             print(
                                 f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
@@ -164,7 +164,7 @@ def read_quadruplex_json(file_path):
                                 has_consecutive = True
                                 break
                             prev_char = char.lower() if char.isalpha() else None
-                        
+
                         if has_consecutive:
                             print(
                                 f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
@@ -174,9 +174,7 @@ def read_quadruplex_json(file_path):
                                 f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths)"
                             )
                 else:
-                    print(
-                        f"Warning: Failed to parse quadruplex object in {file_path}"
-                    )
+                    print(f"Warning: Failed to parse quadruplex object in {file_path}")
         elif isinstance(data, list):
             # Array of objects - could be array of quadruplexDotBracket containers or direct objects
             for item in data:
@@ -198,7 +196,7 @@ def read_quadruplex_json(file_path):
                                 has_consecutive = True
                                 break
                             prev_char = char.lower() if char.isalpha() else None
-                        
+
                         if has_consecutive:
                             print(
                                 f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
@@ -208,9 +206,7 @@ def read_quadruplex_json(file_path):
                                 f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths)"
                             )
                 else:
-                    print(
-                        f"Warning: Failed to parse quadruplex object in {file_path}"
-                    )
+                    print(f"Warning: Failed to parse quadruplex object in {file_path}")
 
         return quadruplexes
 
