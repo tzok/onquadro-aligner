@@ -288,13 +288,6 @@ def main():
         required=True,
     )
     parser.add_argument("sequence", help="The sequence to be analyzed")
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=max(1, cpu_count() - 1),
-        help="Number of processes to use (default: number of CPU cores - 1)",
-    )
     args = parser.parse_args()
 
     if not args.sequence:
@@ -318,7 +311,7 @@ def main():
 
     # Use multiprocessing to distribute the workload
     results = defaultdict(list)
-    with Pool(processes=args.processes) as pool:
+    with Pool() as pool:  # Use default number of processes (CPU count)
         for batch_results in pool.map(process_combination, process_args):
             for result in batch_results:
                 if result:  # Only process non-empty results
