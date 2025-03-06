@@ -874,7 +874,6 @@ def find_best_matches_parallel(
     tetrad_combinations,
     quadruplexes,
     num_results=10,
-    num_processes=0,
 ):
     """
     Find the best matches between tetrad combinations and quadruplexes in parallel.
@@ -884,7 +883,6 @@ def find_best_matches_parallel(
         tetrad_combinations: List of tetrad combinations
         quadruplexes: List of quadruplexes
         num_results: Number of top results to return
-        num_processes: Number of processes to use (0 for auto-detect)
 
     Returns:
         List of (combination_index, combo, str_repr, list of top matches)
@@ -900,8 +898,7 @@ def find_best_matches_parallel(
     ]
 
     # Determine the number of processes to use
-    if num_processes <= 0:
-        num_processes = min(multiprocessing.cpu_count(), len(process_args))
+    num_processes = min(multiprocessing.cpu_count(), len(process_args))
     if num_processes < 1:
         num_processes = 1
 
@@ -972,32 +969,6 @@ def parse_arguments():
         required=True,
     )
     parser.add_argument(
-        "-c",
-        "--combinations",
-        type=int,
-        default=10,
-        help="Number of tetrad combinations to process (default: 10)",
-    )
-    parser.add_argument(
-        "-q",
-        "--quadruplexes",
-        type=int,
-        default=5,
-        help="Number of quadruplexes to compare against (default: 5)",
-    )
-    parser.add_argument(
-        "--all-quadruplexes",
-        action="store_true",
-        help="Compare against all quadruplexes instead of just the first N",
-    )
-    parser.add_argument(
-        "-p",
-        "--processes",
-        type=int,
-        default=0,
-        help="Number of processes to use (default: auto-detect)",
-    )
-    parser.add_argument(
         "-r",
         "--results",
         type=int,
@@ -1056,7 +1027,7 @@ def main():
 
     # Display the combinations if requested
     if args.show_combinations:
-        display_limit = min(args.combinations, len(tetrad_combinations))
+        display_limit = min(10, len(tetrad_combinations))  # Default to showing 10
         for i, (combo, str_repr, compressed_repr) in enumerate(
             tetrad_combinations[:display_limit], 1
         ):
@@ -1098,7 +1069,6 @@ def main():
             tetrad_combinations,
             quadruplexes,
             num_results=args.results,
-            num_processes=args.processes,
         )
 
         # Sort results by the best compressed similarity score (highest first)
