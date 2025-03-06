@@ -1019,6 +1019,11 @@ def parse_arguments():
         default=10,
         help="Number of top results to display in final ranking (default: 10)",
     )
+    parser.add_argument(
+        "--show-combinations",
+        action="store_true",
+        help="Display all generated tetrad combinations",
+    )
     return parser.parse_args()
 
 
@@ -1064,21 +1069,22 @@ def main():
         f"After filtering duplicates: {len(tetrad_combinations)} unique tetrad patterns"
     )
 
-    # Display the combinations (limit based on user preference)
-    display_limit = min(args.combinations, len(tetrad_combinations))
-    for i, (combo, str_repr, compressed_repr) in enumerate(
-        tetrad_combinations[:display_limit], 1
-    ):
-        print(f"\nCombination {i}:")
-        print(f"  Representation: {str_repr}")
-        print(f"  Compressed: {compressed_repr}")
-        print(f"  Concatenated: {concatenate_groups(compressed_repr)}")
-        print(f"  Unique letters: {sorted(get_unique_letters(compressed_repr))}")
-        for j, tetrad in enumerate(combo, 1):
-            print(f"  Tetrad {j}: G positions {', '.join(map(str, tetrad))}")
+    # Display the combinations if requested
+    if args.show_combinations:
+        display_limit = min(args.combinations, len(tetrad_combinations))
+        for i, (combo, str_repr, compressed_repr) in enumerate(
+            tetrad_combinations[:display_limit], 1
+        ):
+            print(f"\nCombination {i}:")
+            print(f"  Representation: {str_repr}")
+            print(f"  Compressed: {compressed_repr}")
+            print(f"  Concatenated: {concatenate_groups(compressed_repr)}")
+            print(f"  Unique letters: {sorted(get_unique_letters(compressed_repr))}")
+            for j, tetrad in enumerate(combo, 1):
+                print(f"  Tetrad {j}: G positions {', '.join(map(str, tetrad))}")
 
-    if len(tetrad_combinations) > display_limit:
-        print(f"\n... and {len(tetrad_combinations) - display_limit} more combinations")
+        if len(tetrad_combinations) > display_limit:
+            print(f"\n... and {len(tetrad_combinations) - display_limit} more combinations")
 
     # Read quadruplexes from directory
     quadruplexes = read_quadruplexes_from_directory(args.directory)
