@@ -257,77 +257,83 @@ def find_g_positions(sequence):
 def generate_tetrad_combinations(sequence):
     """
     Generate all possible combinations of tetrad assignments for a sequence.
-    
+
     Rules:
     1. Two consecutive Gs cannot be part of the same tetrad
     2. Each tetrad contains exactly four Gs
-    
+
     Args:
         sequence: The DNA/RNA sequence
-        
+
     Returns:
         list: List of valid tetrad combinations, where each combination is a list of tetrads,
               and each tetrad is a tuple of four G positions (0-based)
     """
     # Find positions of all G nucleotides
     g_positions = find_g_positions(sequence)
-    
+
     # If we have fewer than 4 Gs, no tetrads are possible
     if len(g_positions) < 4:
         return []
-    
+
     # Generate all possible combinations of 4 G positions
     from itertools import combinations
-    
+
     # Store valid tetrads
     valid_tetrads = []
-    
+
     # Check each possible combination of 4 G positions
     for combo in combinations(g_positions, 4):
         # Check if any consecutive Gs are in this combination
         is_valid = True
         for i in range(len(g_positions) - 1):
-            if g_positions[i] in combo and g_positions[i+1] in combo and g_positions[i+1] == g_positions[i] + 1:
+            if (
+                g_positions[i] in combo
+                and g_positions[i + 1] in combo
+                and g_positions[i + 1] == g_positions[i] + 1
+            ):
                 is_valid = False
                 break
-        
+
         if is_valid:
             valid_tetrads.append(combo)
-    
+
     # If we have fewer than 2 valid tetrads, no complete combinations are possible
     if len(valid_tetrads) < 1:
         return []
-    
+
     # Generate all possible combinations of tetrads
     from itertools import combinations as itercombo
-    
+
     # Maximum number of tetrads possible
     max_tetrads = len(g_positions) // 4
-    
+
     all_combinations = []
-    
+
     # Try different numbers of tetrads, from max down to 1
     for num_tetrads in range(max_tetrads, 0, -1):
         for tetrad_combo in itercombo(valid_tetrads, num_tetrads):
             # Check if each G is used at most once
             used_positions = set()
             is_valid = True
-            
+
             for tetrad in tetrad_combo:
                 for pos in tetrad:
                     if pos in used_positions:
                         is_valid = False
                         break
                     used_positions.add(pos)
-                
+
                 if not is_valid:
                     break
-            
+
             if is_valid:
                 # Convert to 1-based positions for display
-                display_combo = [tuple(pos + 1 for pos in tetrad) for tetrad in tetrad_combo]
+                display_combo = [
+                    tuple(pos + 1 for pos in tetrad) for tetrad in tetrad_combo
+                ]
                 all_combinations.append(display_combo)
-    
+
     return all_combinations
 
 
@@ -396,18 +402,18 @@ def main():
     # Calculate and display maximum possible tetrads
     max_tetrads = calculate_max_tetrads(sequence)
     print(f"Maximum possible tetrads (G-quartets): {max_tetrads}")
-    
+
     # Generate and display tetrad combinations
     tetrad_combinations = generate_tetrad_combinations(sequence)
     print(f"\nFound {len(tetrad_combinations)} possible tetrad combinations:")
-    
+
     # Display the combinations (limit based on user preference)
     display_limit = min(args.combinations, len(tetrad_combinations))
     for i, combo in enumerate(tetrad_combinations[:display_limit], 1):
         print(f"\nCombination {i}:")
         for j, tetrad in enumerate(combo, 1):
             print(f"  Tetrad {j}: G positions {', '.join(map(str, tetrad))}")
-    
+
     if len(tetrad_combinations) > display_limit:
         print(f"\n... and {len(tetrad_combinations) - display_limit} more combinations")
 
