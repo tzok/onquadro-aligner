@@ -1069,7 +1069,7 @@ def main():
         print(
             f"\nTop {len(display_results)} combinations with perfect matches (out of {len(best_matches)} total):"
         )
-        
+
         if not display_results:
             print("  No perfect matches found.")
 
