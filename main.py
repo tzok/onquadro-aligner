@@ -675,10 +675,15 @@ def read_quadruplexes_from_directory(directory_path):
                     unique_quadruplexes[key] = (quad, [json_file])
 
         # Convert dictionary to list of tuples
-        all_quadruplexes = [(quad, source_files) for (quad, source_files) in unique_quadruplexes.values()]
+        all_quadruplexes = [
+            (quad, source_files)
+            for (quad, source_files) in unique_quadruplexes.values()
+        ]
 
         print(f"Loaded {total_quads_loaded} quadruplex structures in total.")
-        print(f"After grouping duplicates: {len(all_quadruplexes)} unique quadruplex structures.")
+        print(
+            f"After grouping duplicates: {len(all_quadruplexes)} unique quadruplex structures."
+        )
         return all_quadruplexes
 
     except Exception as e:
@@ -892,7 +897,9 @@ def align_against_quadruplexes(sequence, quadruplexes, score_threshold=0.8):
     )
 
     # Prepare arguments for parallel processing
-    process_args = [(sequence, quad, source_files) for quad, source_files in quadruplexes]
+    process_args = [
+        (sequence, quad, source_files) for quad, source_files in quadruplexes
+    ]
 
     # Compute score matrices in parallel
     quad_scores = []
@@ -1005,7 +1012,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
         )
 
         print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
-        
+
         # Display all source files
         if len(source_files) == 1:
             print(f"Source:     {source_files[0]}")
