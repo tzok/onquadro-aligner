@@ -873,20 +873,17 @@ def process_combination_comparison(args):
 def find_best_matches_parallel(
     tetrad_combinations,
     quadruplexes,
-    num_combinations=5,
-    num_quadruplexes=None,
-    top_matches=3,
+    num_results=10,
     num_processes=0,
 ):
     """
     Find the best matches between tetrad combinations and quadruplexes in parallel.
+    Processes all combinations against all quadruplexes.
 
     Args:
         tetrad_combinations: List of tetrad combinations
         quadruplexes: List of quadruplexes
-        num_combinations: Number of combinations to process
-        num_quadruplexes: Number of quadruplexes to compare against (None for all)
-        top_matches: Number of top matches to return for each combination
+        num_results: Number of top results to return
         num_processes: Number of processes to use (0 for auto-detect)
 
     Returns:
@@ -895,23 +892,11 @@ def find_best_matches_parallel(
     if not tetrad_combinations or not quadruplexes:
         return []
 
-    # Limit the number of combinations to process
-    combinations_to_process = min(num_combinations, len(tetrad_combinations))
-
-    # Limit the number of quadruplexes to compare against
-    if num_quadruplexes is not None:
-        quadruplexes_to_compare = quadruplexes[
-            : min(num_quadruplexes, len(quadruplexes))
-        ]
-    else:
-        quadruplexes_to_compare = quadruplexes
-
+    # Process all combinations against all quadruplexes
     # Prepare arguments for parallel processing
     process_args = [
-        (i, str_repr, compressed_repr, combo, quadruplexes_to_compare)
-        for i, (combo, str_repr, compressed_repr) in enumerate(
-            tetrad_combinations[:combinations_to_process]
-        )
+        (i, str_repr, compressed_repr, combo, quadruplexes)
+        for i, (combo, str_repr, compressed_repr) in enumerate(tetrad_combinations)
     ]
 
     # Determine the number of processes to use
@@ -921,7 +906,7 @@ def find_best_matches_parallel(
         num_processes = 1
 
     print(
-        f"Processing {combinations_to_process} combinations against {len(quadruplexes_to_compare)} quadruplexes using {num_processes} processes..."
+        f"Processing {len(tetrad_combinations)} combinations against {len(quadruplexes)} quadruplexes using {num_processes} processes..."
     )
 
     # Process comparisons in parallel
@@ -929,14 +914,14 @@ def find_best_matches_parallel(
     with ProcessPoolExecutor(max_workers=num_processes) as executor:
         for result in executor.map(process_combination_comparison, process_args):
             combination_index, combo, str_repr, compressed_repr, quad_scores = result
-            # Keep only the top matches
-            top_quad_scores = quad_scores[:top_matches]
-            results.append(
-                (combination_index, combo, str_repr, compressed_repr, top_quad_scores)
-            )
+            # Keep all matches
+            if quad_scores:  # Only add combinations that have matches
+                results.append(
+                    (combination_index, combo, str_repr, compressed_repr, quad_scores)
+                )
             # Show progress
             print(
-                f"  Processed combination {combination_index + 1}/{combinations_to_process}",
+                f"  Processed combination {combination_index + 1}/{len(tetrad_combinations)}",
                 end="\r",
             )
 
@@ -1108,16 +1093,11 @@ def main():
     if tetrad_combinations and quadruplexes:
         print("\nComparing tetrad combinations to quadruplex structures...")
 
-        # Determine which quadruplexes to use
-        quad_limit = None if args.all_quadruplexes else args.quadruplexes
-
         # Find best matches in parallel
         best_matches = find_best_matches_parallel(
             tetrad_combinations,
             quadruplexes,
-            num_combinations=args.combinations,
-            num_quadruplexes=quad_limit,
-            top_matches=3,
+            num_results=args.results,
             num_processes=args.processes,
         )
 
