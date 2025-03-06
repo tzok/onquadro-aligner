@@ -792,27 +792,27 @@ def longest_common_subsequence(str1, str2):
 def compare_compressed_lists(list1, list2):
     """
     Compare two compressed structure lists directly without concatenation.
-    
+
     Args:
         list1, list2: Two lists of letter groups
-        
+
     Returns:
         float: Similarity score between 0.0 and 1.0
     """
     if not list1 or not list2:
         return 0.0
-    
+
     # Calculate similarity based on the longest common subsequence of groups
     lcs_length = longest_common_subsequence_groups(list1, list2)
-    
+
     # Normalize by the length of the longer list
     max_length = max(len(list1), len(list2))
     if max_length == 0:
         return 0.0
-    
+
     # Base similarity on LCS length
     base_similarity = lcs_length / max_length
-    
+
     # Add bonus for matching group content
     content_similarity = 0.0
     if lcs_length > 0:
@@ -824,13 +824,13 @@ def compare_compressed_lists(list1, list2):
                 # Score based on letter-by-letter similarity
                 group_sim = calculate_group_similarity(g1, g2)
                 content_scores.append(group_sim)
-            
+
             # Average the content similarity scores
             content_similarity = sum(content_scores) / len(content_scores)
-    
+
     # Combine base similarity with content similarity
     final_score = (base_similarity * 0.6) + (content_similarity * 0.4)
-    
+
     return min(1.0, final_score)  # Cap at 1.0
 
 
@@ -852,14 +852,18 @@ def process_combination_comparison(args):
     for quad_index, (quad, sources) in enumerate(quadruplexes):
         # First filter by concatenated similarity
         concat_similarity = compare_combination_to_quadruplex(str_repr, quad)
-        
+
         # Only include perfect matches (score of 1.0) for concatenated comparison
         if concat_similarity == 1.0:
             # Calculate compressed list similarity for ranking
             quad_compressed = compress_structure(quad.structure)
-            compressed_similarity = compare_compressed_lists(compressed_repr, quad_compressed)
-            
-            quad_scores.append((concat_similarity, compressed_similarity, quad_index, quad, sources))
+            compressed_similarity = compare_compressed_lists(
+                compressed_repr, quad_compressed
+            )
+
+            quad_scores.append(
+                (concat_similarity, compressed_similarity, quad_index, quad, sources)
+            )
 
     # Sort by compressed similarity score (highest first)
     quad_scores.sort(key=lambda x: x[1], reverse=True)
@@ -1143,7 +1147,13 @@ def main():
             combo_concat = concatenate_groups(compressed_repr)
             combo_letters = get_unique_letters(combo_concat)
 
-            for concat_similarity, compressed_similarity, quad_index, quad, sources in quad_scores:
+            for (
+                concat_similarity,
+                compressed_similarity,
+                quad_index,
+                quad,
+                sources,
+            ) in quad_scores:
                 quad_compressed = compress_structure(quad.structure)
                 quad_concat = concatenate_groups(quad_compressed)
                 quad_letters = get_unique_letters(quad_concat)
