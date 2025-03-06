@@ -81,7 +81,7 @@ def parse_quadruplex_object(data):
             loop = loop_data.replace("-", "&")
 
         # Determine if this is RNA or DNA
-        is_rna = 'U' in sequence and 'T' not in sequence
+        is_rna = "U" in sequence and "T" not in sequence
 
         # Create and return the object
         return QuadruplexDotBracket(sequence, structure, chi, loop, is_rna)
@@ -225,10 +225,10 @@ def read_quadruplexes_from_directory(directory_path):
 def validate_sequence(sequence):
     """
     Validate if the input is a valid DNA/RNA sequence.
-    
+
     Args:
         sequence: The sequence to validate
-        
+
     Returns:
         Tuple of (is_valid, is_rna) where is_valid is a boolean indicating if the sequence is valid,
         and is_rna is a boolean indicating if the sequence is RNA (True) or DNA (False)
@@ -236,10 +236,10 @@ def validate_sequence(sequence):
     valid_chars = set("ATGCUN-")  # Include '-' as a valid character
     if not all(char.upper() in valid_chars for char in sequence):
         return False, False
-    
+
     # Determine if this is RNA or DNA
-    is_rna = 'U' in sequence and 'T' not in sequence
-    
+    is_rna = "U" in sequence and "T" not in sequence
+
     return True, is_rna
 
 
@@ -287,7 +287,7 @@ def main():
     # For now, just print summary of loaded quadruplexes
     dna_count = sum(1 for quad, _ in quadruplexes if not quad.is_rna)
     rna_count = sum(1 for quad, _ in quadruplexes if quad.is_rna)
-    
+
     print(f"\nSummary of loaded quadruplexes:")
     print(f"  Total unique structures: {len(quadruplexes)}")
     print(f"  DNA structures: {dna_count}")
