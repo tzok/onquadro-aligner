@@ -22,11 +22,13 @@ class QuadruplexDotBracket:
     structure: str
     chi: str
     loop: str
+    is_rna: bool = False
 
     def __str__(self):
         """String representation of the quadruplex."""
+        seq_type = "RNA" if self.is_rna else "DNA"
         return (
-            f"Sequence: {self.sequence}\n"
+            f"Sequence: {self.sequence} ({seq_type})\n"
             f"Structure: {self.structure}\n"
             f"Chi: {self.chi}\n"
             f"Loop: {self.loop}"
@@ -159,8 +161,11 @@ def parse_quadruplex_object(data):
         else:
             loop = loop_data.replace("-", "&")
 
+        # Determine if this is RNA or DNA
+        is_rna = 'U' in sequence and 'T' not in sequence
+
         # Create and return the object
-        return QuadruplexDotBracket(sequence, structure, chi, loop)
+        return QuadruplexDotBracket(sequence, structure, chi, loop, is_rna)
 
     except Exception as e:
         print(f"Error parsing quadruplex object: {str(e)}")
@@ -193,15 +198,33 @@ def parse_arguments():
         default=10,
         help="Number of top-scoring alignments to display (default: 10)",
     )
+    parser.add_argument(
+        "--same-type-only",
+        action="store_true",
+        help="Only align against quadruplexes of the same type (DNA or RNA) as the input sequence",
+    )
     return parser.parse_args()
 
 
 def validate_sequence(sequence):
-    """Validate if the input is a valid DNA/RNA sequence."""
+    """
+    Validate if the input is a valid DNA/RNA sequence.
+    
+    Args:
+        sequence: The sequence to validate
+        
+    Returns:
+        Tuple of (is_valid, is_rna) where is_valid is a boolean indicating if the sequence is valid,
+        and is_rna is a boolean indicating if the sequence is RNA (True) or DNA (False)
+    """
     valid_chars = set("ATGCUN-")  # Include '-' as a valid character
     if not all(char.upper() in valid_chars for char in sequence):
-        return False
-    return True
+        return False, False
+    
+    # Determine if this is RNA or DNA
+    is_rna = 'U' in sequence and 'T' not in sequence
+    
+    return True, is_rna
 
 
 def calculate_score(seq1, seq2, i, j, consecutive_g_count, quad_structure=None):
@@ -1011,7 +1034,8 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
             if aligned_seq1[j] == "G" and aligned_seq2[j] == "G"
         )
 
-        print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
+        seq_type = "RNA" if quad.is_rna else "DNA"
+        print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}, Type: {seq_type}):")
 
         # Display all source files
         if len(source_files) == 1:
@@ -1116,20 +1140,32 @@ def main():
     sequence = args.sequence
 
     # Validate sequence
-    if not validate_sequence(sequence):
+    is_valid, is_rna = validate_sequence(sequence)
+    if not is_valid:
         print(
             "Error: Invalid sequence. Please use only A, T, G, C, U, or N characters."
         )
         sys.exit(1)
 
     # Print input sequence
-    print(f"Input Sequence: {sequence}")
+    seq_type = "RNA" if is_rna else "DNA"
+    print(f"Input Sequence: {sequence} ({seq_type})")
 
     # Read quadruplexes from directory
     quadruplexes = read_quadruplexes_from_directory(args.directory)
 
     if not quadruplexes:
         print("No valid quadruplex structures found. Exiting.")
+        sys.exit(1)
+
+    # Filter quadruplexes by type if requested
+    if args.same_type_only:
+        original_count = len(quadruplexes)
+        quadruplexes = [(quad, sources) for quad, sources in quadruplexes if quad.is_rna == is_rna]
+        print(f"Filtered to {len(quadruplexes)} {seq_type} quadruplexes (from {original_count} total)")
+
+    if not quadruplexes:
+        print(f"No {seq_type} quadruplex structures found. Exiting.")
         sys.exit(1)
 
     # Align sequence against all quadruplexes
