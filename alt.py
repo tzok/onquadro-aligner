@@ -266,8 +266,9 @@ def generate_tetrad_combinations(sequence):
         sequence: The DNA/RNA sequence
 
     Returns:
-        list: List of valid tetrad combinations, where each combination is a list of tetrads,
-              and each tetrad is a tuple of four G positions (0-based)
+        list: List of valid tetrad combinations, where each combination is a tuple containing:
+              - a list of tetrads (each tetrad is a tuple of four G positions, 1-based)
+              - a string representation with letters at tetrad positions and dots elsewhere
     """
     # Find positions of all G nucleotides
     g_positions = find_g_positions(sequence)
@@ -332,7 +333,26 @@ def generate_tetrad_combinations(sequence):
                 display_combo = [
                     tuple(pos + 1 for pos in tetrad) for tetrad in tetrad_combo
                 ]
-                all_combinations.append(display_combo)
+                
+                # Create string representation
+                # Start with all dots
+                str_representation = ['.' for _ in range(len(sequence))]
+                
+                # Fill in tetrad positions with appropriate letters
+                for i, tetrad in enumerate(tetrad_combo):
+                    # Get the letter for this tetrad (q, r, s, t, ...)
+                    tetrad_letter = chr(ord('q') + i)
+                    
+                    # Place the letter at each G position in this tetrad
+                    for pos in tetrad:
+                        # Convert from 0-based to string index
+                        str_representation[pos] = tetrad_letter
+                
+                # Join the list into a string
+                str_representation = ''.join(str_representation)
+                
+                # Add both the position list and string representation to the result
+                all_combinations.append((display_combo, str_representation))
 
     return all_combinations
 
@@ -409,8 +429,9 @@ def main():
 
     # Display the combinations (limit based on user preference)
     display_limit = min(args.combinations, len(tetrad_combinations))
-    for i, combo in enumerate(tetrad_combinations[:display_limit], 1):
+    for i, (combo, str_repr) in enumerate(tetrad_combinations[:display_limit], 1):
         print(f"\nCombination {i}:")
+        print(f"  Representation: {str_repr}")
         for j, tetrad in enumerate(combo, 1):
             print(f"  Tetrad {j}: G positions {', '.join(map(str, tetrad))}")
 
