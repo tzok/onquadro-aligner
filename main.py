@@ -627,16 +627,18 @@ def display_alignment(aligned_seq1, aligned_seq2, score=None, alignment_num=None
 def read_quadruplexes_from_directory(directory_path):
     """
     Read all JSON files in a directory and extract quadruplex objects.
+    Groups duplicate quadruplexes (same sequence and structure) together.
 
     Args:
         directory_path: Path to directory containing JSON files
 
     Returns:
-        List of tuples (quadruplex, source_file)
+        List of tuples (quadruplex, source_files) where source_files is a list of file names
     """
     import os
 
-    all_quadruplexes = []
+    # Dictionary to store unique quadruplexes by their sequence and structure
+    unique_quadruplexes = {}  # Key: (sequence, structure), Value: (quad, [source_files])
 
     try:
         # Check if directory exists
@@ -656,15 +658,27 @@ def read_quadruplexes_from_directory(directory_path):
         print(f"Found {len(json_files)} JSON files in '{directory_path}'.")
 
         # Process each JSON file
+        total_quads_loaded = 0
         for json_file in json_files:
             file_path = os.path.join(directory_path, json_file)
             quadruplexes = read_quadruplex_json(file_path)
+            total_quads_loaded += len(quadruplexes)
 
-            # Add source file information to each quadruplex
+            # Group quadruplexes by sequence and structure
             for quad in quadruplexes:
-                all_quadruplexes.append((quad, json_file))
+                key = (quad.sequence, quad.structure)
+                if key in unique_quadruplexes:
+                    # Add this file to the existing quadruplex's sources
+                    unique_quadruplexes[key][1].append(json_file)
+                else:
+                    # Create a new entry
+                    unique_quadruplexes[key] = (quad, [json_file])
 
-        print(f"Loaded {len(all_quadruplexes)} quadruplex structures in total.")
+        # Convert dictionary to list of tuples
+        all_quadruplexes = [(quad, source_files) for (quad, source_files) in unique_quadruplexes.values()]
+
+        print(f"Loaded {total_quads_loaded} quadruplex structures in total.")
+        print(f"After grouping duplicates: {len(all_quadruplexes)} unique quadruplex structures.")
         return all_quadruplexes
 
     except Exception as e:
@@ -699,17 +713,17 @@ def process_quadruplex(args):
     This function is designed to be used with multiprocessing.
 
     Args:
-        args: Tuple containing (sequence, quad, source_file)
+        args: Tuple containing (sequence, quad, source_files)
 
     Returns:
-        Tuple of (quad, source_file, score_matrix, optimal_score)
+        Tuple of (quad, source_files, score_matrix, optimal_score)
     """
-    sequence, quad, source_file = args
+    sequence, quad, source_files = args
     # Pass the structure information for scoring
     score_matrix, optimal_score = compute_alignment_score_matrix(
         sequence, quad.sequence, quad.structure
     )
-    return (quad, source_file, score_matrix, optimal_score)
+    return (quad, source_files, score_matrix, optimal_score)
 
 
 def process_alignment(args):
@@ -718,12 +732,12 @@ def process_alignment(args):
     This function is designed to be used with multiprocessing.
 
     Args:
-        args: Tuple containing (sequence, quad, source_file, score_matrix, score_threshold)
+        args: Tuple containing (sequence, quad, source_files, score_matrix, score_threshold)
 
     Returns:
-        List of tuples (quad, source_file, 0, aligned_seq1, aligned_seq2, score)
+        List of tuples (quad, source_files, 0, aligned_seq1, aligned_seq2, score)
     """
-    sequence, quad, source_file, score_matrix, score_threshold = args
+    sequence, quad, source_files, score_matrix, score_threshold = args
 
     # Align the sequence against the quadruplex sequence using pre-computed matrix
     # Pass the structure information for scoring
@@ -733,7 +747,7 @@ def process_alignment(args):
 
     # Add quadruplex and source information to each alignment
     return [
-        (quad, source_file, 0, aligned_seq1, aligned_seq2, score)
+        (quad, source_files, 0, aligned_seq1, aligned_seq2, score)
         for aligned_seq1, aligned_seq2, score in alignments
     ]
 
@@ -861,11 +875,11 @@ def align_against_quadruplexes(sequence, quadruplexes, score_threshold=0.8):
 
     Args:
         sequence: The sequence to align
-        quadruplexes: List of tuples (quadruplex, source_file)
+        quadruplexes: List of tuples (quadruplex, source_files)
         score_threshold: Score threshold for alignments
 
     Returns:
-        List of tuples (quadruplex, source_file, aligned_seq1, aligned_seq2, score)
+        List of tuples (quadruplex, source_files, aligned_seq1, aligned_seq2, score)
         sorted by score (highest first)
     """
     # Determine the number of processes to use
@@ -878,7 +892,7 @@ def align_against_quadruplexes(sequence, quadruplexes, score_threshold=0.8):
     )
 
     # Prepare arguments for parallel processing
-    process_args = [(sequence, quad, source_file) for quad, source_file in quadruplexes]
+    process_args = [(sequence, quad, source_files) for quad, source_files in quadruplexes]
 
     # Compute score matrices in parallel
     quad_scores = []
@@ -901,8 +915,8 @@ def align_against_quadruplexes(sequence, quadruplexes, score_threshold=0.8):
 
     # Filter quadruplexes by score threshold
     filtered_quads = [
-        (quad, source_file, score_matrix)
-        for quad, source_file, score_matrix, score in quad_scores
+        (quad, source_files, score_matrix)
+        for quad, source_files, score_matrix, score in quad_scores
         if score >= min_acceptable_score
     ]
 
@@ -917,8 +931,8 @@ def align_against_quadruplexes(sequence, quadruplexes, score_threshold=0.8):
 
         # Prepare arguments for parallel processing
         alignment_args = [
-            (sequence, quad, source_file, score_matrix, score_threshold)
-            for quad, source_file, score_matrix in filtered_quads
+            (sequence, quad, source_files, score_matrix, score_threshold)
+            for quad, source_files, score_matrix in filtered_quads
         ]
 
         with ProcessPoolExecutor(max_workers=num_processes) as executor:
@@ -954,7 +968,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
     Shows consecutive G matches with the same structure letter.
 
     Args:
-        ranked_alignments: List of tuples (quadruplex, source_file, segment_num, aligned_seq1, aligned_seq2, score)
+        ranked_alignments: List of tuples (quadruplex, source_files, segment_num, aligned_seq1, aligned_seq2, score)
         top_n: Number of top results to display
     """
     if not ranked_alignments:
@@ -977,7 +991,7 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
 
     for i, (
         quad,
-        source_file,
+        source_files,
         _,  # Unused segment_num
         aligned_seq1,
         aligned_seq2,
@@ -991,7 +1005,14 @@ def display_ranked_alignments(ranked_alignments, top_n=10):
         )
 
         print(f"\nRank #{i} (Score: {score}, G matches: {g_matches}):")
-        print(f"Source:     {source_file}")
+        
+        # Display all source files
+        if len(source_files) == 1:
+            print(f"Source:     {source_files[0]}")
+        else:
+            print(f"Sources:    {source_files[0]}")
+            for src_file in source_files[1:]:
+                print(f"            {src_file}")
 
         # Display the alignment
         print(f"Sequence:   {aligned_seq1}")
