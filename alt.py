@@ -472,56 +472,56 @@ def compress_structure(structure):
 def concatenate_groups(groups):
     """
     Concatenate a list of letter groups into a single string.
-    
+
     Args:
         groups: List of letter groups
-        
+
     Returns:
         str: Concatenated string of all groups
     """
-    return ''.join(groups)
+    return "".join(groups)
 
 
 def get_unique_letters(groups):
     """
     Get the set of unique letters used in the groups.
-    
+
     Args:
         groups: List of letter groups or a concatenated string
-        
+
     Returns:
         set: Set of unique letters
     """
     if isinstance(groups, list):
         # Flatten the list of groups into a single string
-        all_letters = ''.join(groups)
+        all_letters = "".join(groups)
     else:
         all_letters = groups
-    
+
     return set(all_letters)
 
 
 def compare_concatenated_structures(concat1, concat2):
     """
     Compare two concatenated structure strings directly.
-    
+
     Args:
         concat1, concat2: Two concatenated structure strings
-        
+
     Returns:
         float: Similarity score between 0.0 and 1.0
     """
     if not concat1 or not concat2:
         return 0.0
-    
+
     # Calculate similarity based on longest common subsequence
     lcs_length = longest_common_subsequence(concat1, concat2)
-    
+
     # Normalize by the length of the longer string
     max_length = max(len(concat1), len(concat2))
     if max_length == 0:
         return 0.0
-    
+
     similarity = lcs_length / max_length
     return similarity
 
@@ -529,18 +529,18 @@ def compare_concatenated_structures(concat1, concat2):
 def try_letter_mapping(concat1, concat2, mapping):
     """
     Apply a letter mapping to concat2 and compare with concat1.
-    
+
     Args:
         concat1: First concatenated structure string
         concat2: Second concatenated structure string
         mapping: Dictionary mapping letters in concat2 to letters in concat1
-        
+
     Returns:
         float: Similarity score after mapping
     """
     # Apply the mapping to concat2
-    mapped_concat2 = ''.join(mapping.get(c, c) for c in concat2)
-    
+    mapped_concat2 = "".join(mapping.get(c, c) for c in concat2)
+
     # Compare the mapped string with concat1
     return compare_concatenated_structures(concat1, mapped_concat2)
 
@@ -548,20 +548,20 @@ def try_letter_mapping(concat1, concat2, mapping):
 def generate_letter_mappings(letters1, letters2):
     """
     Generate all possible mappings from letters2 to letters1.
-    
+
     Args:
         letters1: Set of letters in the first structure
         letters2: Set of letters in the second structure
-        
+
     Returns:
         list: List of mapping dictionaries
     """
     import itertools
-    
+
     # If letters2 has fewer unique letters than letters1, we can't map
     if len(letters2) < len(letters1):
         return []
-    
+
     # If they have the same number of letters, there's only one mapping to try
     if len(letters2) == len(letters1):
         # Try all permutations of letters1 to match with letters2
@@ -570,25 +570,25 @@ def generate_letter_mappings(letters1, letters2):
             mapping = {l2: l1 for l2, l1 in zip(sorted(letters2), perm)}
             mappings.append(mapping)
         return mappings
-    
+
     # If letters2 has more letters, we need to try different subsets
     mappings = []
-    
+
     # For each possible subset of letters2 of size len(letters1)
     for subset in itertools.combinations(letters2, len(letters1)):
         # For each permutation of letters1
         for perm in itertools.permutations(letters1):
             # Create a mapping from the subset to letters1
             mapping = {l2: l1 for l2, l1 in zip(subset, perm)}
-            
+
             # For remaining letters in letters2, map to the closest letter in letters1
             remaining = letters2 - set(subset)
             for l2 in remaining:
                 # Map to the first letter in letters1 (arbitrary choice)
                 mapping[l2] = next(iter(letters1))
-            
+
             mappings.append(mapping)
-    
+
     return mappings
 
 
@@ -605,28 +605,28 @@ def compare_compressed_structures(groups1, groups2):
     """
     if not groups1 or not groups2:
         return 0.0
-    
+
     # Concatenate the groups
     concat1 = concatenate_groups(groups1)
     concat2 = concatenate_groups(groups2)
-    
+
     # Get unique letters in each structure
     letters1 = get_unique_letters(concat1)
     letters2 = get_unique_letters(concat2)
-    
+
     # If the second structure has fewer unique letters, it can't match
     if len(letters2) < len(letters1):
         return -1.0  # Incompatible
-    
+
     # Try all possible letter mappings
     mappings = generate_letter_mappings(letters1, letters2)
-    
+
     # Find the best mapping
     best_score = 0.0
     for mapping in mappings:
         score = try_letter_mapping(concat1, concat2, mapping)
         best_score = max(best_score, score)
-    
+
     return best_score
 
 
@@ -753,15 +753,15 @@ def compare_combination_to_quadruplex(combination_repr, quadruplex):
     # Compress both structures into letter groups
     combo_groups = compress_structure(combination_repr)
     quad_groups = compress_structure(quadruplex.structure)
-    
+
     # Get unique letters in each structure
     combo_letters = get_unique_letters(combo_groups)
     quad_letters = get_unique_letters(quad_groups)
-    
+
     # If the quadruplex has fewer unique letters, it can't match
     if len(quad_letters) < len(combo_letters):
         return -1.0  # Incompatible
-    
+
     # Compare the compressed structures
     return compare_compressed_structures(combo_groups, quad_groups)
 
@@ -1088,35 +1088,37 @@ def main():
             print("  Top matches:")
             combo_concat = concatenate_groups(compressed_repr)
             combo_letters = get_unique_letters(combo_concat)
-            
+
             for similarity, quad_index, quad, sources in quad_scores:
                 quad_compressed = compress_structure(quad.structure)
                 quad_concat = concatenate_groups(quad_compressed)
                 quad_letters = get_unique_letters(quad_concat)
-                
+
                 print(f"    Match score: {similarity:.2f}")
                 print(f"    Structure: {quad.structure}")
                 print(f"    Compressed: {quad_compressed}")
                 print(f"    Concatenated: {quad_concat}")
                 print(f"    Unique letters: {sorted(quad_letters)}")
-                
+
                 # If the quadruplex has more letters, show the best mapping
                 if len(quad_letters) > len(combo_letters):
                     mappings = generate_letter_mappings(combo_letters, quad_letters)
                     best_mapping = None
                     best_score = -1
-                    
+
                     for mapping in mappings:
                         score = try_letter_mapping(combo_concat, quad_concat, mapping)
                         if score > best_score:
                             best_score = score
                             best_mapping = mapping
-                    
+
                     if best_mapping:
                         print(f"    Best mapping: {best_mapping}")
-                        mapped_concat = ''.join(best_mapping.get(c, c) for c in quad_concat)
+                        mapped_concat = "".join(
+                            best_mapping.get(c, c) for c in quad_concat
+                        )
                         print(f"    Mapped: {mapped_concat}")
-                
+
                 print(
                     f"    Source: {sources[0]}"
                     + (f" (and {len(sources) - 1} more)" if len(sources) > 1 else "")
