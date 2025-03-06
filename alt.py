@@ -138,16 +138,16 @@ def read_quadruplex_json(file_path):
                             prev_char = char.lower() if char.isalpha() else None
 
                         if has_consecutive:
-                            print(
-                                f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
+                            print_warning(
+                                f"Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
                             )
                         else:
-                            print(
-                                f"Warning: Invalid quadruplexDotBracket object found in {file_path} (fields have different lengths)"
+                            print_warning(
+                                f"Invalid quadruplexDotBracket object found in {file_path} (fields have different lengths)"
                             )
                 else:
-                    print(
-                        f"Warning: Failed to parse quadruplexDotBracket object in {file_path}"
+                    print_warning(
+                        f"Failed to parse quadruplexDotBracket object in {file_path}"
                     )
             else:
                 # Try to parse as a direct quadruplex object
@@ -166,15 +166,15 @@ def read_quadruplex_json(file_path):
                             prev_char = char.lower() if char.isalpha() else None
 
                         if has_consecutive:
-                            print(
-                                f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
+                            print_warning(
+                                f"Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
                             )
                         else:
-                            print(
-                                f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths)"
+                            print_warning(
+                                f"Invalid quadruplex object found in {file_path} (fields have different lengths)"
                             )
                 else:
-                    print(f"Warning: Failed to parse quadruplex object in {file_path}")
+                    print_warning(f"Failed to parse quadruplex object in {file_path}")
         elif isinstance(data, list):
             # Array of objects - could be array of quadruplexDotBracket containers or direct objects
             for item in data:
@@ -198,26 +198,26 @@ def read_quadruplex_json(file_path):
                             prev_char = char.lower() if char.isalpha() else None
 
                         if has_consecutive:
-                            print(
-                                f"Warning: Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
+                            print_warning(
+                                f"Skipping quadruplex in {file_path} - structure contains consecutive identical letters"
                             )
                         else:
-                            print(
-                                f"Warning: Invalid quadruplex object found in {file_path} (fields have different lengths)"
+                            print_warning(
+                                f"Invalid quadruplex object found in {file_path} (fields have different lengths)"
                             )
                 else:
-                    print(f"Warning: Failed to parse quadruplex object in {file_path}")
+                    print_warning(f"Failed to parse quadruplex object in {file_path}")
 
         return quadruplexes
 
     except FileNotFoundError:
-        print(f"Error: File '{file_path}' not found.")
+        print(f"Error: File '{file_path}' not found.", file=sys.stderr)
         return []
     except json.JSONDecodeError:
-        print(f"Error: File '{file_path}' contains invalid JSON.")
+        print(f"Error: File '{file_path}' contains invalid JSON.", file=sys.stderr)
         return []
     except Exception as e:
-        print(f"Error reading quadruplex data: {str(e)}")
+        print(f"Error reading quadruplex data: {str(e)}", file=sys.stderr)
         return []
 
 
@@ -238,7 +238,7 @@ def read_quadruplexes_from_directory(directory_path):
     try:
         # Check if directory exists
         if not os.path.isdir(directory_path):
-            print(f"Error: Directory '{directory_path}' not found.")
+            print(f"Error: Directory '{directory_path}' not found.", file=sys.stderr)
             return []
 
         # Get all JSON files in the directory
@@ -247,7 +247,7 @@ def read_quadruplexes_from_directory(directory_path):
         ]
 
         if not json_files:
-            print(f"Warning: No JSON files found in directory '{directory_path}'.")
+            print_warning(f"No JSON files found in directory '{directory_path}'.")
             return []
 
         print(f"Found {len(json_files)} JSON files in '{directory_path}'.")
@@ -282,7 +282,7 @@ def read_quadruplexes_from_directory(directory_path):
         return all_quadruplexes
 
     except Exception as e:
-        print(f"Error reading directory: {str(e)}")
+        print(f"Error reading directory: {str(e)}", file=sys.stderr)
         return []
 
 
@@ -949,6 +949,11 @@ def find_best_matches_parallel(
     return results
 
 
+def print_warning(message):
+    """Print a warning message to stderr."""
+    print(f"Warning: {message}", file=sys.stderr)
+
+
 def validate_sequence(sequence):
     """
     Validate if the input is a valid DNA/RNA sequence.
@@ -1029,7 +1034,8 @@ def main():
     is_valid, is_rna = validate_sequence(sequence)
     if not is_valid:
         print(
-            "Error: Invalid sequence. Please use only A, T, G, C, U, or N characters."
+            "Error: Invalid sequence. Please use only A, T, G, C, U, or N characters.",
+            file=sys.stderr
         )
         sys.exit(1)
 
@@ -1079,7 +1085,7 @@ def main():
     quadruplexes = read_quadruplexes_from_directory(args.directory)
 
     if not quadruplexes:
-        print("No valid quadruplex structures found. Exiting.")
+        print("No valid quadruplex structures found. Exiting.", file=sys.stderr)
         sys.exit(1)
 
     # For now, just print summary of loaded quadruplexes
