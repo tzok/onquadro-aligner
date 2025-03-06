@@ -789,6 +789,51 @@ def longest_common_subsequence(str1, str2):
     return dp[m][n]
 
 
+def compare_compressed_lists(list1, list2):
+    """
+    Compare two compressed structure lists directly without concatenation.
+    
+    Args:
+        list1, list2: Two lists of letter groups
+        
+    Returns:
+        float: Similarity score between 0.0 and 1.0
+    """
+    if not list1 or not list2:
+        return 0.0
+    
+    # Calculate similarity based on the longest common subsequence of groups
+    lcs_length = longest_common_subsequence_groups(list1, list2)
+    
+    # Normalize by the length of the longer list
+    max_length = max(len(list1), len(list2))
+    if max_length == 0:
+        return 0.0
+    
+    # Base similarity on LCS length
+    base_similarity = lcs_length / max_length
+    
+    # Add bonus for matching group content
+    content_similarity = 0.0
+    if lcs_length > 0:
+        # Find matching groups and calculate their content similarity
+        matches = find_matching_groups(list1, list2)
+        if matches:
+            content_scores = []
+            for g1, g2 in matches:
+                # Score based on letter-by-letter similarity
+                group_sim = calculate_group_similarity(g1, g2)
+                content_scores.append(group_sim)
+            
+            # Average the content similarity scores
+            content_similarity = sum(content_scores) / len(content_scores)
+    
+    # Combine base similarity with content similarity
+    final_score = (base_similarity * 0.6) + (content_similarity * 0.4)
+    
+    return min(1.0, final_score)  # Cap at 1.0
+
+
 def process_combination_comparison(args):
     """
     Process a single combination comparison against multiple quadruplexes.
@@ -798,20 +843,26 @@ def process_combination_comparison(args):
         args: Tuple containing (combination_index, str_repr, compressed_repr, combo, quadruplexes)
 
     Returns:
-        Tuple of (combination_index, combo, str_repr, compressed_repr, list of (similarity, quad_index, quad, sources))
+        Tuple of (combination_index, combo, str_repr, compressed_repr, list of (similarity, compressed_similarity, quad_index, quad, sources))
     """
     combination_index, str_repr, compressed_repr, combo, quadruplexes = args
 
     # Compare this combination to each quadruplex
     quad_scores = []
     for quad_index, (quad, sources) in enumerate(quadruplexes):
-        similarity = compare_combination_to_quadruplex(str_repr, quad)
-        # Only include perfect matches (score of 1.0)
-        if similarity == 1.0:
-            quad_scores.append((similarity, quad_index, quad, sources))
+        # First filter by concatenated similarity
+        concat_similarity = compare_combination_to_quadruplex(str_repr, quad)
+        
+        # Only include perfect matches (score of 1.0) for concatenated comparison
+        if concat_similarity == 1.0:
+            # Calculate compressed list similarity for ranking
+            quad_compressed = compress_structure(quad.structure)
+            compressed_similarity = compare_compressed_lists(compressed_repr, quad_compressed)
+            
+            quad_scores.append((concat_similarity, compressed_similarity, quad_index, quad, sources))
 
-    # Sort by similarity score (highest first)
-    quad_scores.sort(reverse=True)
+    # Sort by compressed similarity score (highest first)
+    quad_scores.sort(key=lambda x: x[1], reverse=True)
 
     return (combination_index, combo, str_repr, compressed_repr, quad_scores)
 
@@ -888,8 +939,8 @@ def find_best_matches_parallel(
 
     print()  # New line after progress
 
-    # Sort results by the best match score (highest first)
-    results.sort(key=lambda x: x[3][0][0] if x[3] else 0, reverse=True)
+    # Sort results by the best compressed similarity score (highest first)
+    results.sort(key=lambda x: x[4][0][1] if x[4] and x[4][0] else 0, reverse=True)
 
     return results
 
@@ -1057,9 +1108,9 @@ def main():
             num_processes=args.processes,
         )
 
-        # Sort results by the best match score (highest first)
+        # Sort results by the best compressed similarity score (highest first)
         best_matches.sort(
-            key=lambda x: x[4][0][0] if x[4] and x[4][0] else 0, reverse=True
+            key=lambda x: x[4][0][1] if x[4] and x[4][0] else 0, reverse=True
         )
 
         # Limit to requested number of results
@@ -1092,12 +1143,13 @@ def main():
             combo_concat = concatenate_groups(compressed_repr)
             combo_letters = get_unique_letters(combo_concat)
 
-            for similarity, quad_index, quad, sources in quad_scores:
+            for concat_similarity, compressed_similarity, quad_index, quad, sources in quad_scores:
                 quad_compressed = compress_structure(quad.structure)
                 quad_concat = concatenate_groups(quad_compressed)
                 quad_letters = get_unique_letters(quad_concat)
 
-                print(f"    Match score: {similarity:.2f}")
+                print(f"    Concat match score: {concat_similarity:.2f}")
+                print(f"    Compressed match score: {compressed_similarity:.2f}")
                 print(f"    Structure: {quad.structure}")
                 print(f"    Compressed: {quad_compressed}")
                 print(f"    Concatenated: {quad_concat}")
