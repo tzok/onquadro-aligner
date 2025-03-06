@@ -5,14 +5,13 @@ Alternative DNA/RNA Quadruplex Analysis Tool
 This program provides an alternative implementation for working with quadruplex structures.
 """
 
-import sys
 import argparse
 import json
-import os
 import multiprocessing
+import os
+import sys
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
 
 
 @dataclass
@@ -1092,7 +1091,7 @@ def main():
     dna_count = sum(1 for quad, _ in quadruplexes if not quad.is_rna)
     rna_count = sum(1 for quad, _ in quadruplexes if quad.is_rna)
 
-    print(f"\nSummary of loaded quadruplexes:")
+    print("\nSummary of loaded quadruplexes:")
     print(f"  Total unique structures: {len(quadruplexes)}")
     print(f"  DNA structures: {dna_count}")
     print(f"  RNA structures: {rna_count}")
@@ -1100,10 +1099,6 @@ def main():
     # If we have both tetrad combinations and quadruplexes, compare them
     if tetrad_combinations and quadruplexes:
         print("\nComparing tetrad combinations to quadruplex structures...")
-
-        # Set multiprocessing start method if on macOS
-        if sys.platform == "darwin":  # macOS
-            multiprocessing.set_start_method("spawn", force=True)
 
         # Determine which quadruplexes to use
         quad_limit = None if args.all_quadruplexes else args.quadruplexes
