@@ -930,13 +930,17 @@ def main():
         )
 
         # Sort results by the best match score (highest first)
-        best_matches.sort(key=lambda x: x[4][0][0] if x[4] and x[4][0] else 0, reverse=True)
-        
+        best_matches.sort(
+            key=lambda x: x[4][0][0] if x[4] and x[4][0] else 0, reverse=True
+        )
+
         # Limit to requested number of results
-        display_results = best_matches[:min(args.results, len(best_matches))]
-        
+        display_results = best_matches[: min(args.results, len(best_matches))]
+
         # Display results
-        print(f"\nTop {len(display_results)} combinations with best matches (out of {len(best_matches)} total):")
+        print(
+            f"\nTop {len(display_results)} combinations with best matches (out of {len(best_matches)} total):"
+        )
 
         for rank, (
             combination_index,
