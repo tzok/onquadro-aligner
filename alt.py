@@ -333,24 +333,24 @@ def generate_tetrad_combinations(sequence):
                 display_combo = [
                     tuple(pos + 1 for pos in tetrad) for tetrad in tetrad_combo
                 ]
-                
+
                 # Create string representation
                 # Start with all dots
-                str_representation = ['.' for _ in range(len(sequence))]
-                
+                str_representation = ["." for _ in range(len(sequence))]
+
                 # Fill in tetrad positions with appropriate letters
                 for i, tetrad in enumerate(tetrad_combo):
                     # Get the letter for this tetrad (q, r, s, t, ...)
-                    tetrad_letter = chr(ord('q') + i)
-                    
+                    tetrad_letter = chr(ord("q") + i)
+
                     # Place the letter at each G position in this tetrad
                     for pos in tetrad:
                         # Convert from 0-based to string index
                         str_representation[pos] = tetrad_letter
-                
+
                 # Join the list into a string
-                str_representation = ''.join(str_representation)
-                
+                str_representation = "".join(str_representation)
+
                 # Add both the position list and string representation to the result
                 all_combinations.append((display_combo, str_representation))
 
