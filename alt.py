@@ -352,12 +352,14 @@ def generate_tetrad_combinations(sequence):
 
                 # Join the list into a string
                 str_representation = "".join(str_representation)
-                
+
                 # Create compressed representation
                 compressed_repr = compress_structure(str_representation)
 
                 # Add position list, string representation, and compressed representation to the result
-                all_combinations.append((display_combo, str_representation, compressed_repr))
+                all_combinations.append(
+                    (display_combo, str_representation, compressed_repr)
+                )
 
     return all_combinations
 
@@ -366,16 +368,16 @@ def compress_structure(structure):
     """
     Compress a structure string into a list of letter groups.
     Ignores dots and only keeps consecutive letters of the same type.
-    
+
     Args:
         structure: The structure string to compress
-        
+
     Returns:
         list: List of letter groups (e.g., 'qr', 'rq', etc.)
     """
     if not structure:
         return []
-    
+
     # Normalize the structure first (make letters lowercase, remove linkers)
     normalized = []
     for char in structure:
@@ -383,13 +385,13 @@ def compress_structure(structure):
             normalized.append(char.lower())
         elif char not in "-&":  # Skip linkers, keep other characters as dots
             normalized.append(".")
-    
+
     normalized = "".join(normalized)
-    
+
     # Extract letter groups
     result = []
     current_group = ""
-    
+
     for char in normalized:
         if char.isalpha():
             current_group += char
@@ -397,38 +399,38 @@ def compress_structure(structure):
             # We hit a non-letter after a letter group
             result.append(current_group)
             current_group = ""
-    
+
     # Add the last group if there is one
     if current_group:
         result.append(current_group)
-    
+
     return result
 
 
 def compare_compressed_structures(groups1, groups2):
     """
     Compare two compressed structure representations.
-    
+
     Args:
         groups1, groups2: Lists of letter groups
-        
+
     Returns:
         float: Similarity score between 0.0 and 1.0
     """
     if not groups1 or not groups2:
         return 0.0
-    
+
     # Calculate the longest common subsequence of groups
     lcs_length = longest_common_subsequence_groups(groups1, groups2)
-    
+
     # Calculate similarity based on LCS and group sizes
     max_groups = max(len(groups1), len(groups2))
     if max_groups == 0:
         return 0.0
-    
+
     # Base similarity on LCS length
     base_similarity = lcs_length / max_groups
-    
+
     # Add bonus for matching group content
     content_similarity = 0.0
     if lcs_length > 0:
@@ -440,47 +442,47 @@ def compare_compressed_structures(groups1, groups2):
                 # Score based on letter-by-letter similarity
                 group_sim = calculate_group_similarity(g1, g2)
                 content_scores.append(group_sim)
-            
+
             # Average the content similarity scores
             content_similarity = sum(content_scores) / len(content_scores)
-    
+
     # Combine base similarity with content similarity
     final_score = (base_similarity * 0.6) + (content_similarity * 0.4)
-    
+
     return min(1.0, final_score)  # Cap at 1.0
 
 
 def longest_common_subsequence_groups(groups1, groups2):
     """
     Find the length of the longest common subsequence between two lists of groups.
-    
+
     Args:
         groups1, groups2: Two lists of letter groups
-        
+
     Returns:
         int: Length of the longest common subsequence
     """
     m, n = len(groups1), len(groups2)
     dp = [[0] * (n + 1) for _ in range(m + 1)]
-    
+
     for i in range(1, m + 1):
         for j in range(1, n + 1):
             # Groups are considered matching if they share at least one letter
-            if has_common_letters(groups1[i-1], groups2[j-1]):
-                dp[i][j] = dp[i-1][j-1] + 1
+            if has_common_letters(groups1[i - 1], groups2[j - 1]):
+                dp[i][j] = dp[i - 1][j - 1] + 1
             else:
-                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-    
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+
     return dp[m][n]
 
 
 def has_common_letters(group1, group2):
     """
     Check if two letter groups have at least one letter in common.
-    
+
     Args:
         group1, group2: Two letter groups
-        
+
     Returns:
         bool: True if they share at least one letter, False otherwise
     """
@@ -490,68 +492,70 @@ def has_common_letters(group1, group2):
 def find_matching_groups(groups1, groups2):
     """
     Find pairs of matching groups between two lists.
-    
+
     Args:
         groups1, groups2: Two lists of letter groups
-        
+
     Returns:
         list: List of tuples (group1, group2) of matching groups
     """
     matches = []
-    
+
     # Use dynamic programming to find the matching groups
     m, n = len(groups1), len(groups2)
     dp = [[0] * (n + 1) for _ in range(m + 1)]
-    
+
     # Fill the DP table
     for i in range(1, m + 1):
         for j in range(1, n + 1):
-            if has_common_letters(groups1[i-1], groups2[j-1]):
-                dp[i][j] = dp[i-1][j-1] + 1
+            if has_common_letters(groups1[i - 1], groups2[j - 1]):
+                dp[i][j] = dp[i - 1][j - 1] + 1
             else:
-                dp[i][j] = max(dp[i-1][j], dp[i][j-1])
-    
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+
     # Backtrack to find the matching pairs
     i, j = m, n
     while i > 0 and j > 0:
-        if has_common_letters(groups1[i-1], groups2[j-1]):
-            matches.append((groups1[i-1], groups2[j-1]))
+        if has_common_letters(groups1[i - 1], groups2[j - 1]):
+            matches.append((groups1[i - 1], groups2[j - 1]))
             i -= 1
             j -= 1
-        elif dp[i-1][j] > dp[i][j-1]:
+        elif dp[i - 1][j] > dp[i][j - 1]:
             i -= 1
         else:
             j -= 1
-    
+
     # Reverse to get the matches in the correct order
     matches.reverse()
-    
+
     return matches
 
 
 def calculate_group_similarity(group1, group2):
     """
     Calculate similarity between two letter groups.
-    
+
     Args:
         group1, group2: Two letter groups
-        
+
     Returns:
         float: Similarity score between 0.0 and 1.0
     """
     # Count common letters
     common_letters = set(group1) & set(group2)
-    
+
     # Calculate Jaccard similarity
     union_size = len(set(group1) | set(group2))
     if union_size == 0:
         return 0.0
-    
+
     jaccard = len(common_letters) / union_size
-    
+
     # Consider order similarity
-    order_similarity = longest_common_subsequence(group1, group2) / max(len(group1), len(group2))
-    
+    order_similarity = longest_common_subsequence(group1, group2) / max(
+        len(group1), len(group2)
+    )
+
     # Combine the two measures
     return (jaccard * 0.5) + (order_similarity * 0.5)
 
@@ -571,7 +575,7 @@ def compare_combination_to_quadruplex(combination_repr, quadruplex):
     # Compress both structures into letter groups
     combo_groups = compress_structure(combination_repr)
     quad_groups = compress_structure(quadruplex.structure)
-    
+
     # Compare the compressed structures
     return compare_compressed_structures(combo_groups, quad_groups)
 
@@ -685,7 +689,9 @@ def find_best_matches_parallel(
             combination_index, combo, str_repr, compressed_repr, quad_scores = result
             # Keep only the top matches
             top_quad_scores = quad_scores[:top_matches]
-            results.append((combination_index, combo, str_repr, compressed_repr, top_quad_scores))
+            results.append(
+                (combination_index, combo, str_repr, compressed_repr, top_quad_scores)
+            )
             # Show progress
             print(
                 f"  Processed combination {combination_index + 1}/{combinations_to_process}",
@@ -791,7 +797,9 @@ def main():
 
     # Display the combinations (limit based on user preference)
     display_limit = min(args.combinations, len(tetrad_combinations))
-    for i, (combo, str_repr, compressed_repr) in enumerate(tetrad_combinations[:display_limit], 1):
+    for i, (combo, str_repr, compressed_repr) in enumerate(
+        tetrad_combinations[:display_limit], 1
+    ):
         print(f"\nCombination {i}:")
         print(f"  Representation: {str_repr}")
         print(f"  Compressed: {compressed_repr}")
@@ -841,9 +849,13 @@ def main():
         # Display results
         print(f"\nTop {len(best_matches)} combinations with best matches:")
 
-        for rank, (combination_index, combo, str_repr, compressed_repr, quad_scores) in enumerate(
-            best_matches, 1
-        ):
+        for rank, (
+            combination_index,
+            combo,
+            str_repr,
+            compressed_repr,
+            quad_scores,
+        ) in enumerate(best_matches, 1):
             print(f"\nRank #{rank} - Combination {combination_index + 1}: {str_repr}")
             print(f"  Compressed: {compressed_repr}")
 
