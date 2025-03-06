@@ -270,15 +270,14 @@ def process_combination(args):
     """Process a single combination against all quadruplex groups."""
     sequence, combination, unique_quadruplexes = args
     results = []
-    
+
     for _, quadruplex_group in unique_quadruplexes.items():
-        is_match, scores = score_combination(
-            sequence, combination, quadruplex_group[0]
-        )
+        is_match, scores = score_combination(sequence, combination, quadruplex_group[0])
         if is_match:
             results.append((combination, quadruplex_group, scores, len(combination)))
-            
+
     return results
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -290,11 +289,11 @@ def main():
     )
     parser.add_argument("sequence", help="The sequence to be analyzed")
     parser.add_argument(
-        "-p", 
-        "--processes", 
-        type=int, 
+        "-p",
+        "--processes",
+        type=int,
         default=max(1, cpu_count() - 1),
-        help="Number of processes to use (default: number of CPU cores - 1)"
+        help="Number of processes to use (default: number of CPU cores - 1)",
     )
     args = parser.parse_args()
 
@@ -312,9 +311,11 @@ def main():
         )
 
     # Prepare arguments for parallel processing
-    process_args = [(args.sequence, combination, unique_quadruplexes) 
-                   for combination in tetrad_combinations]
-    
+    process_args = [
+        (args.sequence, combination, unique_quadruplexes)
+        for combination in tetrad_combinations
+    ]
+
     # Use multiprocessing to distribute the workload
     results = defaultdict(list)
     with Pool(processes=args.processes) as pool:
