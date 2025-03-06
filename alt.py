@@ -1084,7 +1084,9 @@ def main():
                 print(f"  Tetrad {j}: G positions {', '.join(map(str, tetrad))}")
 
         if len(tetrad_combinations) > display_limit:
-            print(f"\n... and {len(tetrad_combinations) - display_limit} more combinations")
+            print(
+                f"\n... and {len(tetrad_combinations) - display_limit} more combinations"
+            )
 
     # Read quadruplexes from directory
     quadruplexes = read_quadruplexes_from_directory(args.directory)
