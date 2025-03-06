@@ -225,19 +225,19 @@ def read_quadruplexes_from_directory(directory_path):
 def calculate_max_tetrads(sequence):
     """
     Calculate the theoretical maximum number of tetrads possible in a sequence.
-    
+
     Args:
         sequence: The DNA/RNA sequence
-        
+
     Returns:
         int: Maximum number of tetrads (G-quartets) possible
     """
     # Count the number of G nucleotides in the sequence
-    g_count = sequence.upper().count('G')
-    
+    g_count = sequence.upper().count("G")
+
     # Each tetrad requires 4 G nucleotides
     max_tetrads = g_count // 4
-    
+
     return max_tetrads
 
 
@@ -295,7 +295,7 @@ def main():
     # Print input sequence
     seq_type = "RNA" if is_rna else "DNA"
     print(f"Input Sequence: {sequence} ({seq_type})")
-    
+
     # Calculate and display maximum possible tetrads
     max_tetrads = calculate_max_tetrads(sequence)
     print(f"Maximum possible tetrads (G-quartets): {max_tetrads}")
