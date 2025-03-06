@@ -9,6 +9,8 @@ import sys
 import argparse
 import json
 import os
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
@@ -506,6 +508,91 @@ def longest_common_subsequence(str1, str2):
     return dp[m][n]
 
 
+def process_combination_comparison(args):
+    """
+    Process a single combination comparison against multiple quadruplexes.
+    This function is designed to be used with multiprocessing.
+
+    Args:
+        args: Tuple containing (combination_index, str_repr, combo, quadruplexes)
+
+    Returns:
+        Tuple of (combination_index, combo, str_repr, list of (similarity, quad_index, quad, sources))
+    """
+    combination_index, str_repr, combo, quadruplexes = args
+    
+    # Compare this combination to each quadruplex
+    quad_scores = []
+    for quad_index, (quad, sources) in enumerate(quadruplexes):
+        similarity = compare_combination_to_quadruplex(str_repr, quad)
+        quad_scores.append((similarity, quad_index, quad, sources))
+    
+    # Sort by similarity score (highest first)
+    quad_scores.sort(reverse=True)
+    
+    return (combination_index, combo, str_repr, quad_scores)
+
+
+def find_best_matches_parallel(tetrad_combinations, quadruplexes, num_combinations=5, num_quadruplexes=None, top_matches=3, num_processes=0):
+    """
+    Find the best matches between tetrad combinations and quadruplexes in parallel.
+    
+    Args:
+        tetrad_combinations: List of tetrad combinations
+        quadruplexes: List of quadruplexes
+        num_combinations: Number of combinations to process
+        num_quadruplexes: Number of quadruplexes to compare against (None for all)
+        top_matches: Number of top matches to return for each combination
+        num_processes: Number of processes to use (0 for auto-detect)
+        
+    Returns:
+        List of (combination_index, combo, str_repr, list of top matches)
+    """
+    if not tetrad_combinations or not quadruplexes:
+        return []
+    
+    # Limit the number of combinations to process
+    combinations_to_process = min(num_combinations, len(tetrad_combinations))
+    
+    # Limit the number of quadruplexes to compare against
+    if num_quadruplexes is not None:
+        quadruplexes_to_compare = quadruplexes[:min(num_quadruplexes, len(quadruplexes))]
+    else:
+        quadruplexes_to_compare = quadruplexes
+    
+    # Prepare arguments for parallel processing
+    process_args = [
+        (i, str_repr, combo, quadruplexes_to_compare)
+        for i, (combo, str_repr) in enumerate(tetrad_combinations[:combinations_to_process])
+    ]
+    
+    # Determine the number of processes to use
+    if num_processes <= 0:
+        num_processes = min(multiprocessing.cpu_count(), len(process_args))
+    if num_processes < 1:
+        num_processes = 1
+    
+    print(f"Processing {combinations_to_process} combinations against {len(quadruplexes_to_compare)} quadruplexes using {num_processes} processes...")
+    
+    # Process comparisons in parallel
+    results = []
+    with ProcessPoolExecutor(max_workers=num_processes) as executor:
+        for result in executor.map(process_combination_comparison, process_args):
+            combination_index, combo, str_repr, quad_scores = result
+            # Keep only the top matches
+            top_quad_scores = quad_scores[:top_matches]
+            results.append((combination_index, combo, str_repr, top_quad_scores))
+            # Show progress
+            print(f"  Processed combination {combination_index + 1}/{combinations_to_process}", end="\r")
+    
+    print()  # New line after progress
+    
+    # Sort results by the best match score (highest first)
+    results.sort(key=lambda x: x[3][0][0] if x[3] else 0, reverse=True)
+    
+    return results
+
+
 def validate_sequence(sequence):
     """
     Validate if the input is a valid DNA/RNA sequence.
@@ -544,7 +631,7 @@ def parse_arguments():
         "--combinations",
         type=int,
         default=10,
-        help="Number of tetrad combinations to display (default: 10)",
+        help="Number of tetrad combinations to process (default: 10)",
     )
     parser.add_argument(
         "-q",
@@ -552,6 +639,18 @@ def parse_arguments():
         type=int,
         default=5,
         help="Number of quadruplexes to compare against (default: 5)",
+    )
+    parser.add_argument(
+        "--all-quadruplexes",
+        action="store_true",
+        help="Compare against all quadruplexes instead of just the first N",
+    )
+    parser.add_argument(
+        "-p",
+        "--processes",
+        type=int,
+        default=0,
+        help="Number of processes to use (default: auto-detect)",
     )
     return parser.parse_args()
 
@@ -613,36 +712,38 @@ def main():
     # If we have both tetrad combinations and quadruplexes, compare them
     if tetrad_combinations and quadruplexes:
         print("\nComparing tetrad combinations to quadruplex structures...")
-
-        # Take the first few combinations for comparison
-        combinations_to_compare = min(5, len(tetrad_combinations))
-
-        # Take the first few quadruplexes for comparison
-        quadruplexes_to_compare = min(args.quadruplexes, len(quadruplexes))
-
-        print(
-            f"\nShowing top matches for {combinations_to_compare} combinations against {quadruplexes_to_compare} quadruplexes:"
+        
+        # Set multiprocessing start method if on macOS
+        if sys.platform == "darwin":  # macOS
+            multiprocessing.set_start_method("spawn", force=True)
+        
+        # Determine which quadruplexes to use
+        quad_limit = None if args.all_quadruplexes else args.quadruplexes
+        
+        # Find best matches in parallel
+        best_matches = find_best_matches_parallel(
+            tetrad_combinations, 
+            quadruplexes,
+            num_combinations=args.combinations,
+            num_quadruplexes=quad_limit,
+            top_matches=3,
+            num_processes=args.processes
         )
-
-        for i, (combo, str_repr) in enumerate(
-            tetrad_combinations[:combinations_to_compare], 1
-        ):
-            print(f"\nCombination {i}: {str_repr}")
-
-            # Compare this combination to each quadruplex
-            quad_scores = []
-            for j, (quad, sources) in enumerate(
-                quadruplexes[:quadruplexes_to_compare], 1
-            ):
-                similarity = compare_combination_to_quadruplex(str_repr, quad)
-                quad_scores.append((similarity, j, quad, sources))
-
-            # Sort by similarity score (highest first)
-            quad_scores.sort(reverse=True)
-
-            # Display top 3 matches
-            for similarity, j, quad, sources in quad_scores[:3]:
-                print(f"  Match with quadruplex {j} (score: {similarity:.2f}):")
+        
+        # Display results
+        print(f"\nTop {len(best_matches)} combinations with best matches:")
+        
+        for rank, (combination_index, combo, str_repr, quad_scores) in enumerate(best_matches, 1):
+            print(f"\nRank #{rank} - Combination {combination_index + 1}: {str_repr}")
+            
+            # Display tetrad positions
+            for j, tetrad in enumerate(combo, 1):
+                print(f"  Tetrad {j}: G positions {', '.join(map(str, tetrad))}")
+            
+            # Display top matches
+            print("  Top matches:")
+            for similarity, quad_index, quad, sources in quad_scores:
+                print(f"    Match score: {similarity:.2f}")
                 print(f"    Structure: {quad.structure}")
                 print(f"    Normalized: {normalize_structure(quad.structure)}")
                 print(
