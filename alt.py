@@ -806,8 +806,8 @@ def process_combination_comparison(args):
     quad_scores = []
     for quad_index, (quad, sources) in enumerate(quadruplexes):
         similarity = compare_combination_to_quadruplex(str_repr, quad)
-        # Only include compatible matches with positive scores
-        if similarity >= 0:
+        # Only include perfect matches (score of 1.0)
+        if similarity == 1.0:
             quad_scores.append((similarity, quad_index, quad, sources))
 
     # Sort by similarity score (highest first)
@@ -1067,8 +1067,11 @@ def main():
 
         # Display results
         print(
-            f"\nTop {len(display_results)} combinations with best matches (out of {len(best_matches)} total):"
+            f"\nTop {len(display_results)} combinations with perfect matches (out of {len(best_matches)} total):"
         )
+        
+        if not display_results:
+            print("  No perfect matches found.")
 
         for rank, (
             combination_index,
