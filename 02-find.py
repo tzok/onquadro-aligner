@@ -60,7 +60,7 @@ def score_description(quadruplex, candidate):
     for q, c in zip(quadruplex, candidate):
         if q and c:
             alignment = align(q, c)[0]
-            score_linkers += int(-alignment.score)
+            score_linkers += int(alignment.score)
             _, a1, _, a2, _ = alignment.format("fasta").split("\n")
             alignments.append((a1, a2))
         elif q and not c:
@@ -94,7 +94,8 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
                 )
                 current = best.get(key, (math.inf, math.inf, obj, []))
 
-                if (score_tract, score_linkers) < current[:2]:
+                if (score_tract, score_linkers) < (current[0], current[1]) or \
+                        (score_tract == current[0] and score_linkers > current[1]):
                     best[key] = (score_tract, score_linkers, obj, alignments)
 
     result = []
@@ -121,7 +122,7 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
                 "Tetrad count": n,
                 "Molecule": obj["molecule"],
                 "Tract distance": score_tract,
-                "Linker distance": score_linkers,
+                "Linker score": score_linkers,
                 "Aligned input": aligned_input,
                 "Aligned quadruplex": aligned_quadruplex,
             }
@@ -183,7 +184,7 @@ def main():
         args.list_all_quadruplex,
     )
     df = pd.DataFrame(result)
-    df.sort_values(["Tract distance", "Linker distance"], inplace=True)
+    df.sort_values(["Tract distance", "Linker score"], ascending=[True, False], inplace=True)
     df.to_csv(args.output, index=False)
 
 
