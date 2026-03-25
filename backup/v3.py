@@ -9,7 +9,7 @@ import os
 import re
 import sys
 from collections import defaultdict
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool
 
 import numpy as np
 
