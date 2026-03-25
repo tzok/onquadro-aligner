@@ -94,8 +94,9 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
                 )
                 current = best.get(key, (math.inf, math.inf, obj, []))
 
-                if (score_tract, score_linkers) < (current[0], current[1]) or \
-                        (score_tract == current[0] and score_linkers > current[1]):
+                if (score_tract, score_linkers) < (current[0], current[1]) or (
+                    score_tract == current[0] and score_linkers > current[1]
+                ):
                     best[key] = (score_tract, score_linkers, obj, alignments)
 
     result = []
@@ -184,7 +185,9 @@ def main():
         args.list_all_quadruplex,
     )
     df = pd.DataFrame(result)
-    df.sort_values(["Tract distance", "Linker score"], ascending=[True, False], inplace=True)
+    df.sort_values(
+        ["Tract distance", "Linker score"], ascending=[True, False], inplace=True
+    )
     df.to_csv(args.output, index=False)
 
 
