@@ -4,10 +4,12 @@ import functools
 import itertools
 import json
 import math
+import multiprocessing
+import os
 
 import pandas as pd
 from Bio import Align
-from tqdm import tqdm
+from tqdm.contrib.concurrent import process_map
 
 
 @functools.cache
@@ -73,31 +75,58 @@ def score_description(quadruplex, candidate):
     return score_tract, score_linkers, alignments
 
 
+def process_single_item(args):
+    """Process a single data item and return candidate results."""
+    obj, sequence, g_indices, tetrad_count, list_all_quadruplex = args
+
+    candidates = []
+    files = " ".join(obj["filenames"]) if list_all_quadruplex else obj["filenames"][0]
+
+    for n in tetrad_count:
+        if len(obj["qrs"]) // 4 != n:
+            continue
+
+        key = (files, n)
+
+        for combination in combinations(tuple(g_indices), n * 4):
+            description = describe(sequence, tuple(obj["qrs"]), combination)
+            score_tract, score_linkers, alignments = score_description(
+                tuple(obj["description"]), description
+            )
+            candidates.append((key, (score_tract, score_linkers, obj, alignments)))
+
+    return candidates
+
+
 def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadruplex):
+    # Prepare arguments for parallel processing
+    args_list = [
+        (obj, sequence, g_indices, tetrad_count, list_all_quadruplex) for obj in data
+    ]
+
+    # Determine chunksize for better performance with large datasets
+    chunksize = max(1, len(args_list) // (os.cpu_count() * 4))
+
+    # Process in parallel with progress bar (uses all CPUs by default)
+    all_candidates_lists = process_map(
+        process_single_item,
+        args_list,
+        max_workers=os.cpu_count(),
+        chunksize=chunksize,
+        desc="Processing quadruplexes",
+    )
+
+    # Merge results
     best = {}
+    for candidates in all_candidates_lists:
+        for key, value in candidates:
+            score_tract, score_linkers, obj, alignments = value
+            current = best.get(key, (math.inf, math.inf, obj, []))
 
-    for obj in tqdm(data):
-        files = (
-            " ".join(obj["filenames"]) if list_all_quadruplex else obj["filenames"][0]
-        )
-
-        for n in tetrad_count:
-            if len(obj["qrs"]) // 4 != n:
-                continue
-
-            key = (files, n)
-
-            for combination in combinations(tuple(g_indices), n * 4):
-                description = describe(sequence, tuple(obj["qrs"]), combination)
-                score_tract, score_linkers, alignments = score_description(
-                    tuple(obj["description"]), description
-                )
-                current = best.get(key, (math.inf, math.inf, obj, []))
-
-                if (score_tract, score_linkers) < (current[0], current[1]) or (
-                    score_tract == current[0] and score_linkers > current[1]
-                ):
-                    best[key] = (score_tract, score_linkers, obj, alignments)
+            if (score_tract, score_linkers) < (current[0], current[1]) or (
+                score_tract == current[0] and score_linkers > current[1]
+            ):
+                best[key] = (score_tract, score_linkers, obj, alignments)
 
     result = []
 
@@ -160,6 +189,12 @@ def main():
     )
     parser.add_argument(
         "-o", "--output", help="Output file for results", default="results.csv"
+    )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=os.cpu_count(),
+        help=f"Number of parallel workers (default: {os.cpu_count()} - all CPUs)",
     )
     parser.add_argument("sequence", help="The sequence to be analyzed")
     args = parser.parse_args()
