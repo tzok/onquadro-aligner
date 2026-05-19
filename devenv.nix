@@ -6,13 +6,8 @@
   ...
 }:
 {
-  languages.python = {
+  languages.python.uv = {
     enable = true;
-    venv = {
-      enable = true;
-      requirements = ./requirements.txt;
-    };
+    sync.enable = true;
   };
-
-  packages = with pkgs; [ zlib ];
 }
