@@ -3,9 +3,9 @@ name = "onquadro-aligner"
 version = "0.1.0"
 description = "Search an RNA or DNA sequence against a database of known single-chain G-quadruplex structures"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
-    "biopython>=1.87",
-    "pandas>=3.0.3",
-    "tqdm>=4.67.3",
+    "biopython",
+    "pandas",
+    "tqdm",
 ]

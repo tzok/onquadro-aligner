@@ -19,7 +19,7 @@ Dependencies: `biopython`, `pandas`, `tqdm`.
 ### Search a sequence
 
 ```bash
-./02-find.py GGGTACCCGGGTGAGGTGCGGGGT
+uv run ./02-find.py GGGTACCCGGGTGAGGTGCGGGGT
 ```
 
 Output:
@@ -47,7 +47,7 @@ The first line is the input sequence. Each subsequent line is a de-duplicated QR
 ### Rebuild the database
 
 ```bash
-./01-preprocess.py /path/to/eltetrado/json/ --output onquadro-aligner.json
+uv run ./01-preprocess.py /path/to/eltetrado/json/ --output onquadro-aligner.json
 ```
 
 The input directory should contain ElTetrado JSON output files (one per PDB assembly). The output is a JSON file where each row describes a unique single-chain G-only quadruplex pattern.
