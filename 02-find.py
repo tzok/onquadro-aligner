@@ -18,8 +18,8 @@ RESULT_COLUMNS = [
     "Molecule",
     "Tract distance",
     "Linker score",
-    "Aligned input",
-    "Aligned quadruplex",
+    "Input sequence",
+    "QRS",
 ]
 
 
@@ -86,6 +86,13 @@ def score_description(quadruplex, candidate):
     return score_tract, score_linkers, alignments
 
 
+def qrs_line(sequence_length, combination, qrs_chars):
+    line = ["."] * sequence_length
+    for i, char in zip(combination, qrs_chars):
+        line[i] = char
+    return "".join(line)
+
+
 def process_single_item(args):
     """Process a single data item and return candidate results."""
     obj, sequence, g_indices, tetrad_count, list_all_quadruplex = args
@@ -104,7 +111,17 @@ def process_single_item(args):
             score_tract, score_linkers, alignments = score_description(
                 tuple(obj["description"]), description
             )
-            candidates.append((key, (score_tract, score_linkers, obj, alignments)))
+            candidates.append(
+                (
+                    key,
+                    (
+                        score_tract,
+                        score_linkers,
+                        obj,
+                        combination,
+                    ),
+                )
+            )
 
     return candidates
 
@@ -131,30 +148,17 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
     best = {}
     for candidates in all_candidates_lists:
         for key, value in candidates:
-            score_tract, score_linkers, obj, alignments = value
+            score_tract, score_linkers, obj, combination = value
             current = best.get(key, (math.inf, -math.inf, obj, []))
 
             if (score_tract, -score_linkers) < (current[0], -current[1]):
-                best[key] = (score_tract, score_linkers, obj, alignments)
+                best[key] = (score_tract, score_linkers, obj, combination)
 
     result = []
 
-    for (files, n), (score_tract, score_linkers, obj, alignments) in best.items():
-        aligned_input = "G".join([a[1] for a in alignments])
-        aligned_quadruplex = "G".join([a[0] for a in alignments])
-        structure = list(obj["structure"])
-        chi = list(obj["chi"])
-        loop = list(obj["loop"])
+    for (files, n), (score_tract, score_linkers, obj, combination) in best.items():
+        rendered_qrs = qrs_line(len(sequence), combination, tuple(obj["qrs_chars"]))
 
-        for i, c in enumerate(aligned_quadruplex):
-            if c == "-":
-                structure.insert(i, "-")
-                chi.insert(i, "-")
-                loop.insert(i, "-")
-
-        aligned_quadruplex += (
-            "\n" + "".join(structure) + "\n" + "".join(chi) + "\n" + "".join(loop)
-        )
         result.append(
             {
                 "Files": files,
@@ -162,17 +166,26 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
                 "Molecule": obj["molecule"],
                 "Tract distance": score_tract,
                 "Linker score": score_linkers,
-                "Aligned input": aligned_input,
-                "Aligned quadruplex": aligned_quadruplex,
+                "Input sequence": sequence,
+                "QRS": rendered_qrs,
             }
         )
 
-        assert sequence == result[-1]["Aligned input"].replace("-", ""), (
-            sequence,
-            result[-1]["Aligned input"].replace("-", ""),
-        )
-
     return result
+
+
+def print_results(result):
+    if not result:
+        print("No matches found.")
+        return
+
+    printed_qrs = set()
+    print(result[0]["Input sequence"])
+    for row in result:
+        if row["QRS"] in printed_qrs:
+            continue
+        printed_qrs.add(row["QRS"])
+        print(row["QRS"])
 
 
 def main():
@@ -197,7 +210,8 @@ def main():
         action="store_true",
     )
     parser.add_argument(
-        "-o", "--output", help="Output file for results", default="results.csv"
+        "--output-csv",
+        help="Write CSV results to this file",
     )
     parser.add_argument(
         "--jobs",
@@ -230,12 +244,11 @@ def main():
         tetrad_count,
         args.list_all_quadruplex,
     )
-    df = pd.DataFrame(result, columns=RESULT_COLUMNS)
-    if not df.empty:
-        df.sort_values(
-            ["Tract distance", "Linker score"], ascending=[True, False], inplace=True
-        )
-    df.to_csv(args.output, index=False)
+    result.sort(key=lambda row: (row["Tract distance"], -row["Linker score"]))
+    print_results(result)
+
+    if args.output_csv:
+        pd.DataFrame(result, columns=RESULT_COLUMNS).to_csv(args.output_csv, index=False)
 
 
 if __name__ == "__main__":
