@@ -12,6 +12,17 @@ from Bio import Align
 from tqdm.contrib.concurrent import process_map
 
 
+RESULT_COLUMNS = [
+    "Files",
+    "Tetrad count",
+    "Molecule",
+    "Tract distance",
+    "Linker score",
+    "Aligned input",
+    "Aligned quadruplex",
+]
+
+
 @functools.cache
 def combinations(iterable, r):
     return list(itertools.combinations(iterable, r))
@@ -38,13 +49,13 @@ def describe(sequence, quadruplex_qrs, combination):
 
 @functools.cache
 def align(q, c):
-    aligner = Align.PairwiseAligner()
-    aligner.mode = "global"
-    aligner.open_gap_score = -1
-    aligner.extend_gap_score = -1
+    aligner = Align.PairwiseAligner(mode="global", scoring="blastn")
+    # aligner.mode = "global"
+    # aligner.open_gap_score = -1
+    # aligner.extend_gap_score = -1
     return aligner.align(
-        q.upper(),
-        c.upper(),
+        q.upper().replace("U", "T"),
+        c.upper().replace("U", "T"),
     )
 
 
@@ -121,11 +132,9 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
     for candidates in all_candidates_lists:
         for key, value in candidates:
             score_tract, score_linkers, obj, alignments = value
-            current = best.get(key, (math.inf, math.inf, obj, []))
+            current = best.get(key, (math.inf, -math.inf, obj, []))
 
-            if (score_tract, score_linkers) < (current[0], current[1]) or (
-                score_tract == current[0] and score_linkers > current[1]
-            ):
+            if (score_tract, -score_linkers) < (current[0], -current[1]):
                 best[key] = (score_tract, score_linkers, obj, alignments)
 
     result = []
@@ -179,7 +188,7 @@ def main():
     )
     parser.add_argument(
         "--tetrad-count",
-        help="The number of tetrads to look for (default: from 2 to maximum possible)",
+        help="The number of tetrads to look for (default: maximum possible)",
         type=int,
     )
     parser.add_argument(
@@ -198,6 +207,7 @@ def main():
     )
     parser.add_argument("sequence", help="The sequence to be analyzed")
     args = parser.parse_args()
+    sequence = args.sequence.upper()
 
     with open(args.input) as f:
         data = json.load(f)
@@ -205,24 +215,26 @@ def main():
     if args.molecule:
         data = [d for d in data if d["molecule"] == args.molecule]
 
-    g_indices = [i for i, c in enumerate(args.sequence) if c == "G"]
+    g_indices = [i for i, c in enumerate(sequence) if c == "G"]
+    max_tetrad_count = len(g_indices) // 4
     tetrad_count = (
         [args.tetrad_count]
         if args.tetrad_count
-        else list(range(2, len(g_indices) // 4 + 1))
+        else [max_tetrad_count]
     )
 
     result = match_quadruplexes(
         data,
-        args.sequence,
+        sequence,
         g_indices,
         tetrad_count,
         args.list_all_quadruplex,
     )
-    df = pd.DataFrame(result)
-    df.sort_values(
-        ["Tract distance", "Linker score"], ascending=[True, False], inplace=True
-    )
+    df = pd.DataFrame(result, columns=RESULT_COLUMNS)
+    if not df.empty:
+        df.sort_values(
+            ["Tract distance", "Linker score"], ascending=[True, False], inplace=True
+        )
     df.to_csv(args.output, index=False)
 
 
