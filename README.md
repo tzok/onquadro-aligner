@@ -29,7 +29,7 @@ GGGTACCCGGGTGAGGTGCGGGGT
 qR......RqS.r.Qs...SrQs.
 ```
 
-The first line is the input sequence. Each subsequent line is a de-duplicated QRS representation of a matching quadruplex, ordered by best match first. Results are sorted by **viability** (viable first, then marginal, unknown/n/a, then not_viable), then by tract distance, then by linker score.
+The first line is the input sequence. Each subsequent line is a de-duplicated QRS representation of a matching quadruplex, ordered by best match first. Results are sorted by **tract distance** (lower is better), then by **linker score** (higher is better), then by **viability** (viable first) as a tie-breaker.
 
 **QRS notation**: Letters encode G-tetrad stacking. The same letter marks all four Gs of one tetrad. Dots (`.`) are non-tetrad nucleotides.
 
@@ -51,7 +51,7 @@ The first line is the input sequence. Each subsequent line is a de-duplicated QR
 uv run ./02-find.py GGTTGGCGCGAAGCATTCGCGGGTTGG --tetrad-count 2 --g4composer-output-dir ./g4c/
 ```
 
-Writes one `.inp` file per matched template, named `{rank}-{template}.inp` where `{rank}` is the zero-padded position of the match in the sorted result list (best match = `0`), so files sort by overall match quality. The sort tuple is `(viability, tract distance, -linker score)`, so `{rank}` encodes all three in a single number. Each file is a valid g4composer input describing the **query sequence** folded into the matched template's geometry:
+Writes one `.inp` file per matched template, named `{rank}-{template}.inp` where `{rank}` is the zero-padded position of the match in the sorted result list (best match = `0`), so files sort by overall match quality. The sort tuple is `(tract distance, -linker score, viability)`, so `{rank}` encodes all three in a single number. Each file is a valid g4composer input describing the **query sequence** folded into the matched template's geometry:
 
 ``` text
 # tract_distance=0 linker_score=38 viability=unknown loop_lengths=2-15-2 topology=+l-l+l template=6fc9-assembly-1

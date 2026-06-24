@@ -442,9 +442,9 @@ def main():
     )
     result.sort(
         key=lambda row: (
-            VIABILITY_RANK.get(row["Viability"], 2),
             row["Tract distance"],
             -row["Linker score"],
+            VIABILITY_RANK.get(row["Viability"], 2),
         )
     )
     print_results(result)
