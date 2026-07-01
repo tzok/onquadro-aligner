@@ -7,5 +7,6 @@ requires-python = ">=3.13"
 dependencies = [
     "biopython",
     "pandas",
+    "streamlit",
     "tqdm",
 ]

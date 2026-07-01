@@ -448,23 +448,30 @@ def process_single_item(args):
     return candidates
 
 
-def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadruplex):
+def match_quadruplexes(
+    data, sequence, g_indices, tetrad_count, list_all_quadruplex, parallel=True
+):
     # Prepare arguments for parallel processing
     args_list = [
         (obj, sequence, g_indices, tetrad_count, list_all_quadruplex) for obj in data
     ]
 
-    # Determine chunksize for better performance with large datasets
-    chunksize = max(1, len(args_list) // (os.cpu_count() * 4))
+    if parallel:
+        # Determine chunksize for better performance with large datasets
+        chunksize = max(1, len(args_list) // (os.cpu_count() * 4))
 
-    # Process in parallel with progress bar (uses all CPUs by default)
-    all_candidates_lists = process_map(
-        process_single_item,
-        args_list,
-        max_workers=os.cpu_count(),
-        chunksize=chunksize,
-        desc="Processing quadruplexes",
-    )
+        # Process in parallel with progress bar (uses all CPUs by default)
+        all_candidates_lists = process_map(
+            process_single_item,
+            args_list,
+            max_workers=os.cpu_count(),
+            chunksize=chunksize,
+            desc="Processing quadruplexes",
+        )
+    else:
+        all_candidates_lists = [
+            process_single_item(args) for args in args_list
+        ]
 
     # Merge results — both metrics lower-is-better
     best = {}

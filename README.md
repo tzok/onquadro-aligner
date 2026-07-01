@@ -12,11 +12,19 @@ Requires Python 3.14+.
 uv sync
 ```
 
-Dependencies: `biopython`, `pandas`, `tqdm`.
+Dependencies: `biopython`, `pandas`, `streamlit`, `tqdm`.
 
 ## Usage
 
-### Search a sequence
+### Web app
+
+```bash
+uv run streamlit run app.py
+```
+
+Enter a sequence in the input field (uppercase = RNA, lowercase = DNA, mixed = search both). Results appear in a sortable table with viability indicators. Click a row to view its g4composer output and download the `.inp` file.
+
+### Search a sequence (CLI)
 
 ```bash
 uv run ./02-find.py GGGTACCCGGGTGAGGTGCGGGGT
