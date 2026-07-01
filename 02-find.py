@@ -17,7 +17,7 @@ RESULT_COLUMNS = [
     "Tetrad count",
     "Molecule",
     "Tract distance",
-    "Linker score",
+    "Linker distance",
     "Viability",
     "Loop lengths",
     "Topology",
@@ -39,37 +39,181 @@ def _clamp(length):
     return min(length, 4)
 
 
-def viability(l1, l2, l3, topology, n_tetrads):
-    """Score whether a query fold is viable per two-tetrad G4 loop-length rules.
+def parse_loop_types(topology):
+    """Parse a topology string like ``"-ld+l"`` into ``["-l", "d", "+l"]``."""
+    loops = []
+    i = 0
+    while i < len(topology):
+        ch = topology[i]
+        if ch == "d":
+            loops.append("d")
+            i += 1
+        elif ch in "+-" and i + 1 < len(topology) and topology[i + 1] in "lp":
+            loops.append(topology[i : i + 2])
+            i += 2
+        else:
+            raise ValueError(f"Cannot parse topology at position {i}: {topology!r}")
+    return loops
 
-    Rules are derived from a manuscript studying two-tetrad DNA G4s with
-    thymidine-only loops. The four observed topologies are applied to any
-    tetrad count (lateral/diagonal loop energetics are largely tetrad-count
-    independent). Propeller-containing topologies not among the four are
-    treated as viable for >=3 tetrads (propeller loops are abundant in
-    three-tetrad G4s) and not_viable for two tetrads (rare/unstable, except
-    d+pd which is handled explicitly). Returns one of
-    ``viable``/``marginal``/``not_viable``/``unknown``.
+
+def loop_type_pattern(topology):
+    """Return the (t1, t2, t3) type pattern, e.g. ``("p", "d", "l")``."""
+    parsed = parse_loop_types(topology)
+    return tuple("d" if t == "d" else t[1] for t in parsed)
+
+
+def classify_topology(topology):
+    """Map a loop progression to the set of topology classes it may belong to.
+
+    Based on Table 1 of gkag435. Some patterns are ambiguous between two
+    classes (e.g. (l,l,p) can be hybrid3 or hybrid4); in that case both are
+    returned.
+    """
+    pattern = loop_type_pattern(topology)
+    mapping = {
+        ("p", "p", "p"): {"parallel"},
+        ("l", "l", "l"): {"chair"},
+        ("l", "d", "l"): {"basket", "basket2"},
+        ("d", "p", "d"): {"basket"},
+        ("l", "p", "l"): {"basket2"},
+        ("p", "d", "p"): {"hybrid1"},
+        ("p", "l", "l"): {"hybrid1"},
+        ("p", "d", "l"): {"hybrid2"},
+        ("l", "d", "p"): {"hybrid2"},
+        ("p", "p", "l"): {"hybrid2", "hybrid3"},
+        ("l", "l", "p"): {"hybrid3", "hybrid4"},
+        ("d", "p", "l"): {"hybrid4"},
+        ("l", "p", "p"): {"hybrid4"},
+    }
+    return mapping.get(pattern, set())
+
+
+# Table 3 from gkag435: (clamped L1, clamped L2, clamped L3) -> {class: percentage}
+# "any" means any L2 value. L2=4 covers the 4-5 nt range (clamped).
+TABLE3 = {
+    (1, "any", 1): {"parallel": 100},
+    (2, 1, 2): {"parallel": 100},
+    (2, 2, 2): {"parallel": 73, "chair": 27},
+    (2, 3, 2): {"chair": 100},
+    (2, 4, 2): {"basket": 100},
+    (3, 1, 3): {"parallel": 100},
+    (3, 2, 3): {"hybrid3": 100},
+    (3, 3, 3): {"hybrid1": 50, "hybrid3": 27, "chair": 19, "basket2": 4},
+    (3, 4, 3): {"basket": 75, "basket2": 25},
+    (4, 1, 4): {"basket": 14},
+    (4, 4, 4): {"basket": 43, "chair": 14},
+}
+
+
+def _table3_lookup(a, b, c):
+    """Return the {class: percentage} dict from TABLE3, or None."""
+    if a != c:
+        return None
+    key = (a, b, c)
+    if key in TABLE3:
+        return TABLE3[key]
+    key_any = (a, "any", c)
+    if key_any in TABLE3:
+        return TABLE3[key_any]
+    return None
+
+
+def viability(l1, l2, l3, topology, n_tetrads):
+    """Score whether a query fold is viable per gkag435 topological rules.
+
+    Implements hard geometric constraints (loop type vs length, stem height),
+    the two-1-nt-loops rule, Table 3 lookup (L1=L3 cases), two-tetrad paper
+    rules as fallback, tetrad-count adjustments, and a general propeller
+    fallback. Returns one of ``viable``/``marginal``/``not_viable``/
+    ``unknown``.
     """
     if n_tetrads < 2:
         return "n/a"
 
     a, b, c = _clamp(l1), _clamp(l2), _clamp(l3)
+    types = loop_type_pattern(topology)
+    classes = classify_topology(topology)
 
-    if topology == "d+pd":
-        return "viable" if a == 4 and c == 4 else "not_viable"
-
-    if topology == "+l+l+l":
-        if b == 3 and a in (2, 3, 4) and c in (2, 3, 4):
-            if a == 4 and c == 4:
-                return "not_viable"
-            return "viable"
-        if b == 3 and ((a == 1) ^ (c == 1)) and (
-            a in (1, 2, 3, 4) and c in (1, 2, 3, 4)
-        ):
-            return "marginal"
+    # --- Hard constraints (geometric impossibilities) ---
+    # 0-1 nt loops must be propeller
+    for length, loop_type in zip((l1, l2, l3), types):
+        if length <= 1 and loop_type != "p":
+            return "not_viable"
+    # Diagonal loops require >= 4 nts
+    for length, loop_type in zip((l1, l2, l3), types):
+        if loop_type == "d" and length < 4:
+            return "not_viable"
+    # 4-tetrad stem (~18 Å) too tall for 1-nt propeller loop (~12.5 Å)
+    if n_tetrads >= 4 and any(length <= 1 for length in (l1, l2, l3)):
         return "not_viable"
 
+    # --- Two-1-nt-loops rule: topology must be parallel ---
+    short_count = sum(1 for length in (l1, l2, l3) if length <= 1)
+    if short_count >= 2:
+        if "parallel" in classes:
+            return "viable"
+        return "not_viable"
+
+    # --- d+pd / d-pd explicit rule (basket with two diagonal flanking loops) ---
+    if topology in ("d+pd", "d-pd"):
+        return "viable" if a == 4 and c == 4 else "not_viable"
+
+    # --- Table 3 lookup (L1 == L3) ---
+    entry = _table3_lookup(a, b, c)
+    if entry is not None:
+        matched = [pct for cls, pct in entry.items() if cls in classes]
+        if matched:
+            if max(matched) >= 50:
+                label = "viable"
+            else:
+                label = "marginal"
+            if label == "viable":
+                label = _tetrad_adjustment(classes, n_tetrads, label)
+            return label
+        return "not_viable"
+
+    # --- Two-tetrad paper rules (fallback for 2-tetrad, not covered by Table 3) ---
+    if n_tetrads == 2:
+        result = _two_tetrad_rules(a, b, c, topology)
+        if result is not None:
+            return result
+
+    # --- General propeller fallback ---
+    if all(t == "p" for t in types):
+        if all(length >= 2 for length in (l1, l2, l3)):
+            label = "viable"
+            label = _tetrad_adjustment(classes, n_tetrads, label)
+            return label
+        return "not_viable"
+
+    # --- Topology-specific fallback for non-propeller with loops >= 2 ---
+    if all(length >= 2 for length in (l1, l2, l3)):
+        if classes and "unknown" not in classes:
+            label = "marginal"
+            label = _tetrad_adjustment(classes, n_tetrads, label)
+            return label
+
+    return "unknown"
+
+
+def _tetrad_adjustment(classes, n_tetrads, label):
+    """Downgrade viable to marginal for energetically unfavorable tetrad counts."""
+    if label != "viable":
+        return label
+    if n_tetrads == 3 and classes & {"chair", "basket", "basket2"}:
+        return "marginal"
+    if n_tetrads == 2 and classes & {"parallel", "hybrid1", "hybrid2", "hybrid3"}:
+        return "marginal"
+    return label
+
+
+def _two_tetrad_rules(a, b, c, topology):
+    """Two-tetrad-specific rules from the companion paper. Returns label or None.
+
+    Only handles topologies with explicit rules not well-covered by Table 3:
+    -ld+l, +ld-l, -l-l-l. The d+pd case is handled explicitly before Table 3,
+    and +l+l+l (chair) is left to Table 3.
+    """
     if topology in ("-ld+l", "+ld-l"):
         if b == 4 and a in (3, 4) and c in (2, 3, 4):
             if a == 4 and c == 4:
@@ -86,17 +230,7 @@ def viability(l1, l2, l3, topology, n_tetrads):
             return "marginal"
         return "not_viable"
 
-    has_propeller = "p" in topology
-    if has_propeller and topology not in ("d+pd",):
-        if n_tetrads >= 3:
-            if 1 in (a, b, c):
-                return "not_viable"
-            if a in (2, 3, 4) and b in (2, 3, 4) and c in (2, 3, 4):
-                return "viable"
-            return "marginal"
-        return "not_viable"
-
-    return "unknown"
+    return None
 
 
 def compute_query_loops(combination, gaps):
@@ -152,10 +286,11 @@ def describe(sequence, quadruplex_qrs, combination):
 
 @functools.cache
 def align(q, c):
-    aligner = Align.PairwiseAligner(mode="global", scoring="blastn")
-    # aligner.mode = "global"
-    # aligner.open_gap_score = -1
-    # aligner.extend_gap_score = -1
+    aligner = Align.PairwiseAligner(mode="global")
+    aligner.match_score = 0
+    aligner.mismatch_score = -1
+    aligner.open_gap_score = -1
+    aligner.extend_gap_score = -1
     return aligner.align(
         q.upper().replace("U", "T"),
         c.upper().replace("U", "T"),
@@ -171,22 +306,24 @@ def score_description(quadruplex, candidate):
         if len(quadruplex[i]) == 0:
             score_tract += len(candidate[i])
 
-    score_linkers = 0
+    linker_distance = 0
     alignments = []
     for q, c in zip(quadruplex, candidate):
         if q and c:
             alignment = align(q, c)[0]
-            score_linkers += int(alignment.score)
+            linker_distance += -int(alignment.score)
             _, a1, _, a2, _ = alignment.format("fasta").split("\n")
             alignments.append((a1, a2))
         elif q and not c:
+            linker_distance += len(q)
             alignments.append((q, "-" * len(q)))
         elif not q and c:
+            linker_distance += len(c)
             alignments.append(("-" * len(c), c))
         else:
             alignments.append(("", ""))
 
-    return score_tract, score_linkers, alignments
+    return score_tract, linker_distance, alignments
 
 
 def qrs_line(sequence_length, combination, qrs_chars):
@@ -254,7 +391,7 @@ def write_g4composer_outputs(result, output_dir):
 
         score_line = (
             f"# tract_distance={row['Tract distance']} "
-            f"linker_score={row['Linker score']} "
+            f"linker_distance={row['Linker distance']} "
             f"viability={row['Viability']}"
         )
         if row["Loop lengths"]:
@@ -293,7 +430,7 @@ def process_single_item(args):
 
         for combination in combinations(tuple(g_indices), n * 4):
             description = describe(sequence, tuple(obj["qrs"]), combination)
-            score_tract, score_linkers, alignments = score_description(
+            score_tract, linker_distance, alignments = score_description(
                 tuple(obj["description"]), description
             )
             candidates.append(
@@ -301,7 +438,7 @@ def process_single_item(args):
                     key,
                     (
                         score_tract,
-                        score_linkers,
+                        linker_distance,
                         obj,
                         combination,
                     ),
@@ -329,19 +466,19 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
         desc="Processing quadruplexes",
     )
 
-    # Merge results
+    # Merge results — both metrics lower-is-better
     best = {}
     for candidates in all_candidates_lists:
         for key, value in candidates:
-            score_tract, score_linkers, obj, combination = value
-            current = best.get(key, (math.inf, -math.inf, obj, []))
+            score_tract, linker_distance, obj, combination = value
+            current = best.get(key, (math.inf, math.inf, obj, []))
 
-            if (score_tract, -score_linkers) < (current[0], -current[1]):
-                best[key] = (score_tract, score_linkers, obj, combination)
+            if (score_tract, linker_distance) < (current[0], current[1]):
+                best[key] = (score_tract, linker_distance, obj, combination)
 
     result = []
 
-    for (files, n), (score_tract, score_linkers, obj, combination) in best.items():
+    for (files, n), (score_tract, linker_distance, obj, combination) in best.items():
         rendered_qrs = qrs_line(len(sequence), combination, tuple(obj["qrs_chars"]))
         v_label, v_lengths, v_topology = assess_viability(obj, combination, n)
 
@@ -351,7 +488,7 @@ def match_quadruplexes(data, sequence, g_indices, tetrad_count, list_all_quadrup
                 "Tetrad count": n,
                 "Molecule": obj["molecule"],
                 "Tract distance": score_tract,
-                "Linker score": score_linkers,
+                "Linker distance": linker_distance,
                 "Viability": v_label,
                 "Loop lengths": v_lengths,
                 "Topology": v_topology,
@@ -442,9 +579,12 @@ def main():
     )
     result.sort(
         key=lambda row: (
-            row["Tract distance"],
-            -row["Linker score"],
+            0
+            if row["Tract distance"] == 0 and row["Linker distance"] == 0
+            else 1,
             VIABILITY_RANK.get(row["Viability"], 2),
+            row["Tract distance"],
+            row["Linker distance"],
         )
     )
     print_results(result)
