@@ -265,21 +265,66 @@ def compute_query_loops(combination, gaps):
     return tuple(lengths)
 
 
+def infer_gaps_from_qrs(qrs):
+    """Infer the 3 gap indices from QRS codes when loop info is unavailable.
+
+    Follows each tract by tracking the QRS direction (increasing or
+    decreasing) and detecting where the pattern breaks. Works for 246/251
+    entries with loop info; the 5 mismatches involve bulges/snapbacks
+    which cannot be resolved from QRS alone.
+    """
+    n_tetrads = max(qrs)
+    gaps = []
+    i = 0
+    while i < len(qrs) - 1 and len(gaps) < 3:
+        if qrs[i + 1] == qrs[i] + 1:
+            direction = 1
+        elif qrs[i + 1] == qrs[i] - 1:
+            direction = -1
+        elif qrs[i + 1] == qrs[i]:
+            gaps.append(i)
+            i += 1
+            continue
+        else:
+            gaps.append(i)
+            i += 1
+            continue
+        while i + 1 < len(qrs):
+            expected = qrs[i] + direction
+            if qrs[i + 1] == expected and 1 <= expected <= n_tetrads:
+                i += 1
+            else:
+                gaps.append(i)
+                i += 1
+                break
+        else:
+            break
+    return gaps
+
+
 def assess_viability(obj, combination, n_tetrads):
-    """Return (viability_label, loop_lengths_str, topology_str)."""
+    """Return (viability_label, loop_lengths_str, topology_str, zero_count)."""
     loops = obj.get("loops")
-    if not loops:
-        return "n/a", "", ""
-    gaps = loops["gaps"]
-    topology = loops["topology"]
+    if loops:
+        gaps = loops["gaps"]
+        topology = loops["topology"]
+    else:
+        gaps = infer_gaps_from_qrs(obj["qrs"])
+        topology = ""
+        if len(gaps) != 3:
+            return "n/a", "", "", 0
+
     lengths = compute_query_loops(combination, gaps)
     if lengths is None:
-        return "not_viable", "", topology
+        return "not_viable", "", topology, 0
     lengths_str = "-".join(str(length) for length in lengths)
+    zero_count = sum(1 for length in lengths if length == 0)
     if any(length < 1 for length in lengths):
-        return "not_viable", lengths_str, topology
+        return "not_viable", lengths_str, topology, zero_count
+    if not loops:
+        return "unknown", lengths_str, topology, zero_count
     label = viability(lengths[0], lengths[1], lengths[2], topology, n_tetrads)
-    return label, lengths_str, topology
+    return label, lengths_str, topology, zero_count
 
 
 @functools.cache
@@ -509,7 +554,9 @@ def match_quadruplexes(
 
     for (files, n), (score_tract, linker_distance, obj, combination) in best.items():
         rendered_qrs = qrs_line(len(sequence), combination, tuple(obj["qrs_chars"]))
-        v_label, v_lengths, v_topology = assess_viability(obj, combination, n)
+        v_label, v_lengths, v_topology, zero_count = assess_viability(
+            obj, combination, n
+        )
 
         result.append(
             {
@@ -521,6 +568,7 @@ def match_quadruplexes(
                 "Viability": v_label,
                 "Loop lengths": v_lengths,
                 "Topology": v_topology,
+                "zero_count": zero_count,
                 "Input sequence": sequence,
                 "QRS": rendered_qrs,
                 "g4c": obj.get("g4c"),
@@ -609,11 +657,13 @@ def main():
     result.sort(
         key=lambda row: (
             0
-            if row["Tract distance"] == 0 and row["Linker distance"] == 0
+            if row["Tract distance"] == 0
+            and row["Linker distance"] == 0
+            and row.get("zero_count", 0) == 0
             else 1,
             VIABILITY_RANK.get(row["Viability"], 2),
             row["Tract distance"],
-            row["Linker distance"],
+            row["Linker distance"] + row.get("zero_count", 0) * 1000,
         )
     )
     print_results(result)

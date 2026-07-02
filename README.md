@@ -92,9 +92,13 @@ Each match is assessed for **topological viability** based on rules from two stu
 | `marginal`   | Equilibrium/mix region — unimolecular fold possible but not dominant    |
 | `unknown`    | Topology not covered by the rules                                       |
 | `not_viable` | Loop lengths incompatible with the template topology (geometric/rules)  |
-| `n/a`        | Not assessable (no loop info, or <2 tetrads)                            |
+| `n/a`        | Not assessable (<2 tetrads, or loop gaps could not be determined)       |
 
 **Caveats**: the rules are derived from structural studies of DNA G4s, mostly with thymidine-only loops and no flanking residues. They are applied to query loop **lengths** regardless of composition — non-T loops and flanking sequences can shift conformational preferences (e.g. via base-pair or base-triple formation within loops). Parallel structures resolved in PEG/crowding conditions were excluded from Table 3, so parallel topologies may be underrepresented.
+
+For templates whose ElTetrado JSON lacked usable loop annotations, loop gap positions are inferred from the QRS tract pattern instead (works for the vast majority of cases); such matches are labeled `unknown` rather than `n/a` unless a 0-nt loop is detected.
+
+**0-nt loops**: a 0-nt loop (two tetrad Gs directly adjacent, no linker) is structurally exceptional — it requires a discontinuity (snapback) before one of the two guanosines, which this tool does not model. Matches containing a 0-nt loop are always marked `not_viable` and are penalized in the ranking (pushed after all non-zero-loop matches within the same viability/tract-distance tier), even if they would otherwise be a "perfect" (tract distance = 0, linker distance = 0) match.
 
 ### Rebuild the database
 

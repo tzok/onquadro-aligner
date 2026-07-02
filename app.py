@@ -140,10 +140,14 @@ def main():
 
         result.sort(
             key=lambda row: (
-                0 if row["Tract distance"] == 0 and row["Linker distance"] == 0 else 1,
+                0
+                if row["Tract distance"] == 0
+                and row["Linker distance"] == 0
+                and row.get("zero_count", 0) == 0
+                else 1,
                 find.VIABILITY_RANK.get(row["Viability"], 2),
                 row["Tract distance"],
-                row["Linker distance"],
+                row["Linker distance"] + row.get("zero_count", 0) * 1000,
             )
         )
         st.session_state.search_result = result
