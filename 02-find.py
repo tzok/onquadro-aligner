@@ -6,6 +6,8 @@ import json
 import math
 import multiprocessing
 import os
+from dataclasses import dataclass
+from typing import Optional, Union
 
 import pandas as pd
 from Bio import Align
@@ -33,6 +35,15 @@ VIABILITY_RANK = {
     "n/a": 2,
     "not_viable": 3,
 }
+
+_PARALLEL = frozenset({"parallel"})
+_CHAIR = frozenset({"chair"})
+_BASKET = frozenset({"basket"})
+_BASKET2 = frozenset({"basket2"})
+_BASKET_BOTH = frozenset({"basket", "basket2"})
+_HYBRID1 = frozenset({"hybrid1"})
+_HYBRID3 = frozenset({"hybrid3"})
+_HYBRID_BOTH = frozenset({"hybrid2", "hybrid3"})
 
 
 def _clamp(length):
@@ -65,67 +76,144 @@ def loop_type_pattern(topology):
 def classify_topology(topology):
     """Map a loop progression to the set of topology classes it may belong to.
 
-    Based on Table 1 of gkag435. Some patterns are ambiguous between two
-    classes (e.g. (l,l,p) can be hybrid3 or hybrid4); in that case both are
-    returned.
+    Based on the canonical G4 topology classification (Silva et al.):
+    8 groups, 26 topologies. Some patterns are ambiguous between two classes
+    (e.g. (l,d,l) can be basket or basket2); in that case both are returned.
+    Patterns not observed experimentally (e.g. (d,p,l)) return an empty set.
     """
     pattern = loop_type_pattern(topology)
     mapping = {
-        ("p", "p", "p"): {"parallel"},
-        ("l", "l", "l"): {"chair"},
-        ("l", "d", "l"): {"basket", "basket2"},
-        ("d", "p", "d"): {"basket"},
-        ("l", "p", "l"): {"basket2"},
-        ("p", "d", "p"): {"hybrid1"},
-        ("p", "l", "l"): {"hybrid1"},
-        ("p", "d", "l"): {"hybrid2"},
-        ("l", "d", "p"): {"hybrid2"},
-        ("p", "p", "l"): {"hybrid2", "hybrid3"},
-        ("l", "l", "p"): {"hybrid3", "hybrid4"},
-        ("d", "p", "l"): {"hybrid4"},
-        ("l", "p", "p"): {"hybrid4"},
+        ("p", "p", "p"): _PARALLEL,
+        ("l", "l", "l"): _CHAIR,
+        ("l", "d", "l"): _BASKET_BOTH,
+        ("d", "p", "d"): _BASKET_BOTH,
+        ("l", "p", "l"): _BASKET_BOTH,
+        ("p", "l", "p"): _BASKET_BOTH,
+        ("p", "d", "p"): _BASKET_BOTH,
+        ("p", "l", "l"): _HYBRID1,
+        ("p", "d", "l"): _HYBRID_BOTH,
+        ("l", "d", "p"): _HYBRID_BOTH,
+        ("p", "p", "l"): _HYBRID_BOTH,
+        ("l", "l", "p"): _HYBRID_BOTH,
+        ("l", "p", "p"): frozenset({"hybrid4"}),
     }
     return mapping.get(pattern, set())
 
 
-# Table 3 from gkag435: (clamped L1, clamped L2, clamped L3) -> {class: percentage}
-# "any" means any L2 value. L2=4 covers the 4-5 nt range (clamped).
-TABLE3 = {
-    (1, "any", 1): {"parallel": 100},
-    (2, 1, 2): {"parallel": 100},
-    (2, 2, 2): {"parallel": 73, "chair": 27},
-    (2, 3, 2): {"chair": 100},
-    (2, 4, 2): {"basket": 100},
-    (3, 1, 3): {"parallel": 100},
-    (3, 2, 3): {"hybrid3": 100},
-    (3, 3, 3): {"hybrid1": 50, "hybrid3": 27, "chair": 19, "basket2": 4},
-    (3, 4, 3): {"basket": 75, "basket2": 25},
-    (4, 1, 4): {"basket": 14},
-    (4, 4, 4): {"basket": 43, "chair": 14},
-}
+@dataclass(frozen=True)
+class _Rule:
+    l1: Optional[int]
+    l2: Optional[int]
+    l3: Optional[int]
+    cls: Optional[frozenset]
+    n_tetrads: Optional[Union[int, tuple]]
+    decision: str
+
+    def matches(self, a, b, c, classes, n):
+        if not _match(self.l1, a):
+            return False
+        if not _match(self.l2, b):
+            return False
+        if not _match(self.l3, c):
+            return False
+        if self.cls is not None:
+            if not (self.cls & classes):
+                return False
+        else:
+            if not classes:
+                return False
+        if not _match(self.n_tetrads, n):
+            return False
+        return True
 
 
-def _table3_lookup(a, b, c):
-    """Return the {class: percentage} dict from TABLE3, or None."""
-    if a != c:
-        return None
-    key = (a, b, c)
-    if key in TABLE3:
-        return TABLE3[key]
-    key_any = (a, "any", c)
-    if key_any in TABLE3:
-        return TABLE3[key_any]
-    return None
+def _match(condition, value):
+    if condition is None:
+        return True
+    if isinstance(condition, tuple):
+        op, val = condition
+        if op == "ge":
+            return value >= val
+        if op == "ne":
+            return value != val
+        return False
+    return value == condition
+
+
+_RULES = [
+    # --- Section A: Table 3 entries (l1 == l3) ---
+    # (1, any, 1)
+    _Rule(1, None, 1, _PARALLEL, ("ge", 3), "viable"),
+    _Rule(1, None, 1, _PARALLEL, 2, "marginal"),
+    _Rule(1, None, 1, None, None, "not_viable"),
+    # (2, 1, 2)
+    _Rule(2, 1, 2, _PARALLEL, ("ge", 3), "viable"),
+    _Rule(2, 1, 2, _PARALLEL, 2, "marginal"),
+    _Rule(2, 1, 2, None, None, "not_viable"),
+    # (2, 2, 2)
+    _Rule(2, 2, 2, _PARALLEL, ("ge", 3), "viable"),
+    _Rule(2, 2, 2, _PARALLEL, 2, "marginal"),
+    _Rule(2, 2, 2, _CHAIR, None, "marginal"),
+    _Rule(2, 2, 2, None, None, "not_viable"),
+    # (2, 3, 2)
+    _Rule(2, 3, 2, _CHAIR, ("ne", 3), "viable"),
+    _Rule(2, 3, 2, _CHAIR, 3, "marginal"),
+    _Rule(2, 3, 2, None, None, "not_viable"),
+    # (2, 4, 2)
+    _Rule(2, 4, 2, _BASKET, ("ne", 3), "viable"),
+    _Rule(2, 4, 2, _BASKET, 3, "marginal"),
+    _Rule(2, 4, 2, None, None, "not_viable"),
+    # (3, 1, 3)
+    _Rule(3, 1, 3, _PARALLEL, ("ge", 3), "viable"),
+    _Rule(3, 1, 3, _PARALLEL, 2, "marginal"),
+    _Rule(3, 1, 3, None, None, "not_viable"),
+    # (3, 2, 3)
+    _Rule(3, 2, 3, _HYBRID3, ("ge", 3), "viable"),
+    _Rule(3, 2, 3, _HYBRID3, 2, "marginal"),
+    _Rule(3, 2, 3, None, None, "not_viable"),
+    # (3, 3, 3)
+    _Rule(3, 3, 3, _HYBRID1, ("ge", 3), "viable"),
+    _Rule(3, 3, 3, _HYBRID1, 2, "marginal"),
+    _Rule(3, 3, 3, _HYBRID3, None, "marginal"),
+    _Rule(3, 3, 3, _CHAIR, None, "marginal"),
+    _Rule(3, 3, 3, _BASKET2, None, "marginal"),
+    _Rule(3, 3, 3, None, None, "not_viable"),
+    # (3, 4, 3)
+    _Rule(3, 4, 3, _BASKET, ("ne", 3), "viable"),
+    _Rule(3, 4, 3, _BASKET, 3, "marginal"),
+    _Rule(3, 4, 3, _BASKET2, None, "marginal"),
+    _Rule(3, 4, 3, None, None, "not_viable"),
+    # (4, 1, 4)
+    _Rule(4, 1, 4, _BASKET, None, "marginal"),
+    _Rule(4, 1, 4, None, None, "not_viable"),
+    # (4, 4, 4)
+    _Rule(4, 4, 4, _BASKET, None, "marginal"),
+    _Rule(4, 4, 4, _CHAIR, None, "marginal"),
+    _Rule(4, 4, 4, None, None, "not_viable"),
+    # --- Section B: Two-tetrad rules (l1 != l3, n_tetrads=2) ---
+    _Rule(4, 4, 4, _BASKET_BOTH, 2, "marginal"),
+    _Rule(("ge", 3), 4, ("ge", 2), _BASKET_BOTH, 2, "viable"),
+    _Rule(2, 4, ("ge", 2), _BASKET_BOTH, 2, "marginal"),
+    _Rule(None, None, None, _BASKET_BOTH, 2, "not_viable"),
+    _Rule(4, 2, 4, _CHAIR, 2, "not_viable"),
+    _Rule(("ge", 3), 2, ("ge", 3), _CHAIR, 2, "marginal"),
+    _Rule(None, None, None, _CHAIR, 2, "not_viable"),
+    # --- Section C: Propeller fallback ---
+    _Rule(("ge", 2), ("ge", 2), ("ge", 2), _PARALLEL, 2, "marginal"),
+    _Rule(("ge", 2), ("ge", 2), ("ge", 2), _PARALLEL, ("ne", 2), "viable"),
+    _Rule(None, None, None, _PARALLEL, None, "not_viable"),
+    # --- Section D: Non-propeller fallback ---
+    _Rule(("ge", 2), ("ge", 2), ("ge", 2), None, None, "marginal"),
+]
 
 
 def viability(l1, l2, l3, topology, n_tetrads):
     """Score whether a query fold is viable per gkag435 topological rules.
 
-    Implements hard geometric constraints (loop type vs length, stem height),
-    the two-1-nt-loops rule, Table 3 lookup (L1=L3 cases), two-tetrad paper
-    rules as fallback, tetrad-count adjustments, and a general propeller
-    fallback. Returns one of ``viable``/``marginal``/``not_viable``/
-    ``unknown``.
+    Implements hard geometric constraints, then a single rules table
+    (first-match-wins) covering Table 3 lookup, two-tetrad paper rules,
+    tetrad-count adjustments, and general fallbacks. Returns one of
+    ``viable``/``marginal``/``not_viable``/``unknown``/``n/a``.
     """
     if n_tetrads < 2:
         return "n/a"
@@ -135,15 +223,12 @@ def viability(l1, l2, l3, topology, n_tetrads):
     classes = classify_topology(topology)
 
     # --- Hard constraints (geometric impossibilities) ---
-    # 0-1 nt loops must be propeller
     for length, loop_type in zip((l1, l2, l3), types):
         if length <= 1 and loop_type != "p":
             return "not_viable"
-    # Diagonal loops require >= 4 nts
     for length, loop_type in zip((l1, l2, l3), types):
         if loop_type == "d" and length < 4:
             return "not_viable"
-    # 4-tetrad stem (~18 Å) too tall for 1-nt propeller loop (~12.5 Å)
     if n_tetrads >= 4 and any(length <= 1 for length in (l1, l2, l3)):
         return "not_viable"
 
@@ -154,83 +239,20 @@ def viability(l1, l2, l3, topology, n_tetrads):
             return "viable"
         return "not_viable"
 
-    # --- d+pd / d-pd explicit rule (basket with two diagonal flanking loops) ---
+    # --- d+pd / d-pd explicit rule ---
     if topology in ("d+pd", "d-pd"):
         return "viable" if a == 4 and c == 4 else "not_viable"
 
-    # --- Table 3 lookup (L1 == L3) ---
-    entry = _table3_lookup(a, b, c)
-    if entry is not None:
-        matched = [pct for cls, pct in entry.items() if cls in classes]
-        if matched:
-            if max(matched) >= 50:
-                label = "viable"
-            else:
-                label = "marginal"
-            if label == "viable":
-                label = _tetrad_adjustment(classes, n_tetrads, label)
-            return label
-        return "not_viable"
+    # --- Unrecognized topology (e.g. dpl — not observed) ---
+    if not classes:
+        return "unknown"
 
-    # --- Two-tetrad paper rules (fallback for 2-tetrad, not covered by Table 3) ---
-    if n_tetrads == 2:
-        result = _two_tetrad_rules(a, b, c, topology)
-        if result is not None:
-            return result
-
-    # --- General propeller fallback ---
-    if all(t == "p" for t in types):
-        if all(length >= 2 for length in (l1, l2, l3)):
-            label = "viable"
-            label = _tetrad_adjustment(classes, n_tetrads, label)
-            return label
-        return "not_viable"
-
-    # --- Topology-specific fallback for non-propeller with loops >= 2 ---
-    if all(length >= 2 for length in (l1, l2, l3)):
-        if classes and "unknown" not in classes:
-            label = "marginal"
-            label = _tetrad_adjustment(classes, n_tetrads, label)
-            return label
+    # --- Rules table (first-match-wins) ---
+    for rule in _RULES:
+        if rule.matches(a, b, c, classes, n_tetrads):
+            return rule.decision
 
     return "unknown"
-
-
-def _tetrad_adjustment(classes, n_tetrads, label):
-    """Downgrade viable to marginal for energetically unfavorable tetrad counts."""
-    if label != "viable":
-        return label
-    if n_tetrads == 3 and classes & {"chair", "basket", "basket2"}:
-        return "marginal"
-    if n_tetrads == 2 and classes & {"parallel", "hybrid1", "hybrid2", "hybrid3"}:
-        return "marginal"
-    return label
-
-
-def _two_tetrad_rules(a, b, c, topology):
-    """Two-tetrad-specific rules from the companion paper. Returns label or None.
-
-    Only handles topologies with explicit rules not well-covered by Table 3:
-    -ld+l, +ld-l, -l-l-l. The d+pd case is handled explicitly before Table 3,
-    and +l+l+l (chair) is left to Table 3.
-    """
-    if topology in ("-ld+l", "+ld-l"):
-        if b == 4 and a in (3, 4) and c in (2, 3, 4):
-            if a == 4 and c == 4:
-                return "marginal"
-            return "viable"
-        if b == 4 and a == 2 and c in (2, 3, 4):
-            return "marginal"
-        return "not_viable"
-
-    if topology == "-l-l-l":
-        if b == 2 and a in (3, 4) and c in (3, 4):
-            if a == 4 and c == 4:
-                return "not_viable"
-            return "marginal"
-        return "not_viable"
-
-    return None
 
 
 def compute_query_loops(combination, gaps):
