@@ -333,6 +333,13 @@ def combinations(iterable, r):
 
 
 @functools.cache
+def positions_with_virtual_start(g_indices):
+    """Prepend a virtual "-1" position (before the sequence start) to the
+    tuple of G indices, used as the initial state for the DP search below."""
+    return (-1,) + tuple(g_indices)
+
+
+@functools.cache
 def describe(sequence, quadruplex_qrs, combination):
     qrs = [0] * len(sequence)
 
@@ -351,14 +358,16 @@ def describe(sequence, quadruplex_qrs, combination):
     return tuple(["".join(d) for d in description])
 
 
+_ALIGNER = Align.PairwiseAligner(mode="global")
+_ALIGNER.match_score = 0
+_ALIGNER.mismatch_score = -1
+_ALIGNER.open_gap_score = -1
+_ALIGNER.extend_gap_score = -1
+
+
 @functools.cache
 def align(q, c):
-    aligner = Align.PairwiseAligner(mode="global")
-    aligner.match_score = 0
-    aligner.mismatch_score = -1
-    aligner.open_gap_score = -1
-    aligner.extend_gap_score = -1
-    return aligner.align(
+    return _ALIGNER.align(
         q.upper().replace("U", "T"),
         c.upper().replace("U", "T"),
     )
@@ -391,6 +400,113 @@ def score_description(quadruplex, candidate):
             alignments.append(("", ""))
 
     return score_tract, linker_distance, alignments
+
+
+@functools.cache
+def segment_cost(candidate_segment, template_segment, interior):
+    """Cost of matching one candidate segment against one template segment.
+
+    Mirrors the per-segment logic inside ``score_description``/``describe``:
+    a tract-distance contribution (only for interior segments whose template
+    is an empty tract) and a linker-distance contribution (alignment-based,
+    or the raw length when one side is empty).
+    """
+    tract = len(candidate_segment) if (template_segment == "" and interior) else 0
+
+    if template_segment and candidate_segment:
+        linker = -int(align(template_segment, candidate_segment)[0].score)
+    elif template_segment and not candidate_segment:
+        linker = len(template_segment)
+    elif candidate_segment and not template_segment:
+        linker = len(candidate_segment)
+    else:
+        linker = 0
+
+    return tract, linker
+
+
+def find_best_combination_dp(sequence, template, k, g_indices):
+    """Find the best-scoring combination of ``k`` G indices via dynamic
+    programming instead of enumerating every ``C(len(g_indices), k)``
+    combination.
+
+    The score decomposes additively over the segments defined by the chosen
+    cut points (G indices), independently of which specific tetrad "code" is
+    assigned to each one. This lets us search for the optimal cut points
+    with a DP over (segment index, last cut position) in
+    O(k * len(g_indices)**2) instead of combinatorial time, while producing
+    results identical to the brute-force search.
+
+    Returns ``(score_tract, linker_distance, combination)`` or ``None`` if
+    there are fewer than ``k`` available G indices.
+    """
+    positions = positions_with_virtual_start(tuple(g_indices))
+    m = len(g_indices)
+    if k > m:
+        return None
+
+    inf = math.inf
+    # dp[idx] = best (tract, linker) cost to have placed j cuts, last one at
+    # positions[idx] (idx == 0 is the virtual "before sequence start" state).
+    dp_prev = [(inf, inf)] * (m + 1)
+    dp_prev[0] = (0, 0)
+    back = [[None] * (m + 1) for _ in range(k + 1)]
+
+    for j in range(1, k + 1):
+        dp_cur = [(inf, inf)] * (m + 1)
+        interior = 1 <= (j - 1) <= (k - 1)
+        template_segment = template[j - 1]
+
+        for idx_b in range(1, m + 1):
+            pos_b = positions[idx_b]
+            best = (inf, inf)
+            best_a = None
+
+            for idx_a in range(idx_b):
+                prev_tract, prev_linker = dp_prev[idx_a]
+                if prev_tract == inf:
+                    continue
+                pos_a = positions[idx_a]
+                candidate_segment = sequence[pos_a + 1 : pos_b]
+                tract, linker = segment_cost(
+                    candidate_segment, template_segment, interior
+                )
+                candidate = (prev_tract + tract, prev_linker + linker)
+                if candidate < best:
+                    best = candidate
+                    best_a = idx_a
+
+            dp_cur[idx_b] = best
+            back[j][idx_b] = best_a
+
+        dp_prev = dp_cur
+
+    best_total = (inf, inf)
+    best_idx = None
+    for idx_b in range(1, m + 1):
+        prev_tract, prev_linker = dp_prev[idx_b]
+        if prev_tract == inf:
+            continue
+        pos_b = positions[idx_b]
+        candidate_segment = sequence[pos_b + 1 :]
+        tract, linker = segment_cost(candidate_segment, template[k], False)
+        candidate = (prev_tract + tract, prev_linker + linker)
+        if candidate < best_total:
+            best_total = candidate
+            best_idx = idx_b
+
+    if best_idx is None:
+        return None
+
+    combo_idx = [None] * k
+    idx = best_idx
+    for j in range(k, 0, -1):
+        combo_idx[j - 1] = idx
+        idx = back[j][idx]
+    combination = tuple(positions[i] for i in combo_idx)
+
+    score_tract, linker_distance = best_total
+    return score_tract, linker_distance, combination
 
 
 def qrs_line(sequence_length, combination, qrs_chars):
@@ -484,7 +600,7 @@ def write_g4composer_outputs(result, output_dir):
 
 def process_single_item(args):
     """Process a single data item and return candidate results."""
-    obj, sequence, g_indices, tetrad_count, list_all_quadruplex = args
+    obj, sequence, g_indices, tetrad_count, list_all_quadruplex, brute_force = args
 
     candidates = []
     files = " ".join(obj["filenames"]) if list_all_quadruplex else obj["filenames"][0]
@@ -495,11 +611,30 @@ def process_single_item(args):
 
         key = (files, n)
 
-        for combination in combinations(tuple(g_indices), n * 4):
-            description = describe(sequence, tuple(obj["qrs"]), combination)
-            score_tract, linker_distance, alignments = score_description(
-                tuple(obj["description"]), description
+        if brute_force:
+            for combination in combinations(tuple(g_indices), n * 4):
+                description = describe(sequence, tuple(obj["qrs"]), combination)
+                score_tract, linker_distance, alignments = score_description(
+                    tuple(obj["description"]), description
+                )
+                candidates.append(
+                    (
+                        key,
+                        (
+                            score_tract,
+                            linker_distance,
+                            obj,
+                            combination,
+                        ),
+                    )
+                )
+        else:
+            best = find_best_combination_dp(
+                sequence, tuple(obj["description"]), n * 4, tuple(g_indices)
             )
+            if best is None:
+                continue
+            score_tract, linker_distance, combination = best
             candidates.append(
                 (
                     key,
@@ -516,11 +651,18 @@ def process_single_item(args):
 
 
 def match_quadruplexes(
-    data, sequence, g_indices, tetrad_count, list_all_quadruplex, parallel=True
+    data,
+    sequence,
+    g_indices,
+    tetrad_count,
+    list_all_quadruplex,
+    parallel=True,
+    brute_force=False,
 ):
     # Prepare arguments for parallel processing
     args_list = [
-        (obj, sequence, g_indices, tetrad_count, list_all_quadruplex) for obj in data
+        (obj, sequence, g_indices, tetrad_count, list_all_quadruplex, brute_force)
+        for obj in data
     ]
 
     if parallel:
@@ -607,7 +749,12 @@ def main():
     )
     parser.add_argument(
         "--tetrad-count",
-        help="The number of tetrads to look for (default: maximum possible)",
+        help=(
+            "The number of tetrads to look for (default: try every tetrad "
+            "count present in the database, from the smallest up to the "
+            "maximum the query's G count could support, and keep the best "
+            "match overall)"
+        ),
         type=int,
     )
     parser.add_argument(
@@ -629,6 +776,16 @@ def main():
         default=os.cpu_count(),
         help=f"Number of parallel workers (default: {os.cpu_count()} - all CPUs)",
     )
+    parser.add_argument(
+        "--brute-force",
+        help=(
+            "Use the exhaustive combinatorial search instead of the default "
+            "dynamic-programming search. Both produce identical results; "
+            "this is kept for debugging/verification and is much slower on "
+            "sequences with many G's."
+        ),
+        action="store_true",
+    )
     parser.add_argument("sequence", help="The sequence to be analyzed")
     args = parser.parse_args()
     sequence = args.sequence.upper()
@@ -641,11 +798,22 @@ def main():
 
     g_indices = [i for i, c in enumerate(sequence) if c == "G"]
     max_tetrad_count = len(g_indices) // 4
-    tetrad_count = (
-        [args.tetrad_count]
-        if args.tetrad_count
-        else [max_tetrad_count]
-    )
+
+    if args.tetrad_count:
+        tetrad_count = [args.tetrad_count]
+    else:
+        # Search every tetrad count the database actually contains, up to
+        # the maximum the query's G count could support. This lets shorter
+        # (fewer-tetrad) templates win even when the query has extra,
+        # non-quadruplex G's that would otherwise only be tried against the
+        # largest possible tetrad count.
+        min_tetrad_count = min(
+            (len(d["qrs"]) // 4 for d in data), default=max_tetrad_count
+        )
+        if max_tetrad_count >= min_tetrad_count:
+            tetrad_count = list(range(min_tetrad_count, max_tetrad_count + 1))
+        else:
+            tetrad_count = [max_tetrad_count]
 
     result = match_quadruplexes(
         data,
@@ -653,6 +821,7 @@ def main():
         g_indices,
         tetrad_count,
         args.list_all_quadruplex,
+        brute_force=args.brute_force,
     )
     result.sort(
         key=lambda row: (

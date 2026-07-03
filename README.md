@@ -39,6 +39,8 @@ qR......RqS.r.Qs...SrQs.
 
 The first line is the input sequence. Each subsequent line is a de-duplicated QRS representation of a matching quadruplex, ordered by best match first. **Perfect matches** (tract distance = 0 and linker distance = 0) are always ranked first. All other matches are sorted by **viability** (viable first), then by **tract distance** (lower is better), then by **linker distance** (lower is better).
 
+By default, the search tries **every tetrad count present in the database** (not just the maximum the query's G count could support), so a template with fewer tetrads than the query has G's for can still win — e.g. a 35-nt query with 18 G's (which could in principle form 4 tetrads) is also matched against 2- and 3-tetrad templates, and the 3-tetrad template turns out to be the correct, perfect match. Use `--tetrad-count` to restrict the search to one specific count.
+
 **QRS notation**: Letters encode G-tetrad stacking. The same letter marks all four Gs of one tetrad. Dots (`.`) are non-tetrad nucleotides.
 
 ### Options
@@ -46,12 +48,13 @@ The first line is the input sequence. Each subsequent line is a de-duplicated QR
 | Flag                         | Description                                              |
 | ---------------------------- | -------------------------------------------------------- |
 | `--molecule DNA\|RNA\|Other` | Filter by molecule type                                  |
-| `--tetrad-count N`           | Look for N tetrads instead of the maximum possible       |
+| `--tetrad-count N`           | Look for exactly N tetrads instead of searching every tetrad count the database supports |
 | `--list-all-quadruplex`      | Show all matching file names instead of only one per hit |
 | `--output-csv FILE`          | Write detailed results (incl. viability) to a CSV file  |
 | `--g4composer-output-dir DIR`| Write g4composer `.inp` files (one per matched template) |
 | `--jobs N`                   | Number of parallel workers (default: all CPUs)           |
 | `--input FILE`               | Use a different preprocessed JSON database               |
+| `--brute-force`              | Use the exhaustive combinatorial search instead of the default dynamic-programming search (see [search-algorithm.md](search-algorithm.md)); much slower, kept for debugging/verification |
 
 ### g4composer export
 
@@ -112,7 +115,7 @@ The input directory should contain ElTetrado JSON output files (one per PDB asse
 
 1. **Preprocessing** (`01-preprocess.py`) — Reads ElTetrado JSON files, extracts single-chain all-G quadruplexes, and deduplicates them into a compact pattern database. Each entry stores the QRS codes, QRS characters, linker descriptions (tract sequences between tetrads), source filenames, a `g4c` field with g4composer geometry (`orient`, `rise`, `twist`, `path`) reconstructed from the ElTetrado JSON topology, and a `loops` field with loop topology and gap indices for viability scoring.
 
-2. **Search** (`02-find.py`) — Takes a nucleotide sequence, identifies G positions, and tries all combinations of Gs to match against database patterns. Each match is scored for topological viability from the query's inferred loop lengths and the template's loop topology. Two distance metrics are used: **tract distance** (extra nucleotides in tracts) and **linker distance** (edit distance between linker sequences, penalizing mismatches, gaps, and missing/extra linkers). Perfect matches (both distances = 0) are ranked first; all others are sorted by viability, then by tract distance, then by linker distance. Searches in parallel across all CPU cores. When `--g4composer-output-dir` is set, writes one `.inp` file per matched template using the query sequence and the template's geometry.
+2. **Search** (`02-find.py`) — Takes a nucleotide sequence, identifies G positions, and searches for the best-scoring combination of Gs to match against each database pattern, trying every tetrad count the database supports by default (not just the maximum the query's G count could support) so that fewer-tetrad templates aren't missed. By default this uses a dynamic-programming search that is mathematically equivalent to trying every combination but runs in polynomial instead of combinatorial time (see [search-algorithm.md](search-algorithm.md) for a detailed explanation); the exhaustive combinatorial search is still available via `--brute-force` for verification. Each match is scored for topological viability from the query's inferred loop lengths and the template's loop topology. Two distance metrics are used: **tract distance** (extra nucleotides in tracts) and **linker distance** (edit distance between linker sequences, penalizing mismatches, gaps, and missing/extra linkers). Perfect matches (both distances = 0) are ranked first; all others are sorted by viability, then by tract distance, then by linker distance. Searches in parallel across all CPU cores. When `--g4composer-output-dir` is set, writes one `.inp` file per matched template using the query sequence and the template's geometry.
 
 ## Database
 

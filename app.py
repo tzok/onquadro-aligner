@@ -92,7 +92,7 @@ def main():
                 "Tetrad count",
                 min_value=0,
                 value=0,
-                help="0 = maximum possible (default)",
+                help="0 = search every tetrad count in the database (default)",
             )
         with col2:
             list_all = st.checkbox(
@@ -116,12 +116,25 @@ def main():
             st.session_state.pop("search_result", None)
             return
 
-        tc_list = [int(tetrad_count)] if tetrad_count > 0 else [max_tetrad_count]
-
         data = load_database(DB_PATH)
         molecule_filter = detect_molecule_filter(raw_sequence)
         if molecule_filter:
             data = [d for d in data if d["molecule"] == molecule_filter]
+
+        if tetrad_count > 0:
+            tc_list = [int(tetrad_count)]
+        else:
+            # Search every tetrad count the database actually contains, up
+            # to the maximum the sequence's G count could support, so
+            # fewer-tetrad templates aren't missed just because the query
+            # has extra, non-quadruplex G's (see search-algorithm.md).
+            min_tetrad_count = min(
+                (len(d["qrs"]) // 4 for d in data), default=max_tetrad_count
+            )
+            if max_tetrad_count >= min_tetrad_count:
+                tc_list = list(range(min_tetrad_count, max_tetrad_count + 1))
+            else:
+                tc_list = [max_tetrad_count]
 
         with st.spinner("Searching..."):
             result = find.match_quadruplexes(
