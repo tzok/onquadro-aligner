@@ -2,11 +2,11 @@
 import argparse
 import glob
 import json
-import math
 import os
 from collections import Counter, defaultdict
 
 import pandas as pd
+from tqdm import tqdm
 
 
 def chain_id(full_name):
@@ -28,120 +28,23 @@ def describe(sequence, qrs):
     return tuple(description)
 
 
-def remap_path_entry_to_clockwise(entry):
-    label = "".join(ch for ch in entry if ch.isalpha())
-    column = "".join(ch for ch in entry if ch.isdigit())
-    if column == "1":
-        return entry
-    clockwise_column = {"2": "4", "3": "3", "4": "2"}.get(column)
-    if clockwise_column is None:
-        raise ValueError(f"Unsupported g4composer path column: {entry}")
-    return f"{label}{clockwise_column}"
-
-
-def format_number(value):
-    if math.isnan(value):
-        return "."
-    rounded = round(value, 1)
-    if math.isclose(rounded, round(rounded), abs_tol=1.0e-9):
-        return str(int(round(rounded)))
-    return f"{rounded:.1f}".rstrip("0").rstrip(".")
-
-
-def tetrad_label(index):
-    labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-    if index >= len(labels):
-        raise ValueError(f"Cannot represent more than {len(labels)} tetrads")
-    return labels[index]
-
-
-def path_steps_between(start, end, adjacency, steps):
-    queue = [(start, [], [start])]
-    while queue:
-        current, path_steps, visited = queue.pop(0)
-        if current == end:
-            return path_steps
-        for neighbor in adjacency.get(current, []):
-            if neighbor in visited:
+def parse_g4composer_inp(path):
+    """Read orient/rise/twist/path directly from a g4composer .inp file."""
+    fields = {}
+    with open(path) as f:
+        for line in f:
+            line = line.rstrip("\n")
+            if not line or line.startswith("#"):
                 continue
-            queue.append(
-                (
-                    neighbor,
-                    path_steps + [steps[(current, neighbor)]],
-                    visited + [neighbor],
-                )
-            )
-    raise ValueError("Failed to derive g4composer build traversal between tetrads")
-
-
-def compute_g4composer(quadruplex, tetrad_pairs, global_index):
-    """Reconstruct g4composer orient/rise/twist/path from ElTetrado JSON data.
-
-    Mirrors eltetrado.g4composer but operates purely on the JSON DTO so no 3D
-    coordinates are required. The JSON tetrad-pair rise is already the unsigned
-    magnitude that g4composer uses as signed-rise magnitude; interval signs come
-    only from build-order traversal direction.
-    """
-    tetrads = quadruplex["tetrads"]
-    if len(tetrads) < 2:
+            parts = line.split(maxsplit=1)
+            if len(parts) != 2:
+                continue
+            key, value = parts
+            if key in ("orient", "rise", "twist", "path"):
+                fields[key] = value
+    if not {"orient", "rise", "twist", "path"}.issubset(fields):
         return None
-
-    polarities = quadruplex.get("tetradPolarities") or []
-    if len(polarities) != len(tetrads) or any(p is None for p in polarities):
-        return None
-
-    tetrad_ids = [t["id"] for t in tetrads]
-    tetrad_min_index = {
-        t["id"]: min(
-            global_index[t["nt1"]],
-            global_index[t["nt2"]],
-            global_index[t["nt3"]],
-            global_index[t["nt4"]],
-        )
-        for t in tetrads
-    }
-    ordered_ids = sorted(tetrad_ids, key=lambda tid: tetrad_min_index[tid])
-    id_to_label = {tid: tetrad_label(i) for i, tid in enumerate(ordered_ids)}
-    label_to_id = {label: tid for tid, label in id_to_label.items()}
-
-    path = quadruplex["path"]
-    build_labels = []
-    for entry in path:
-        label = "".join(ch for ch in entry if ch.isalpha())
-        if label not in build_labels:
-            build_labels.append(label)
-    build_order_ids = [label_to_id[label] for label in build_labels]
-
-    polarity_by_id = {t["id"]: p for t, p in zip(tetrads, polarities)}
-    orient = ";".join(
-        f"{id_to_label[tid]}{'+' if polarity_by_id[tid] == 'clockwise' else '-'}"
-        for tid in build_order_ids
-    )
-
-    steps = {}
-    for tp in tetrad_pairs:
-        a, b = tp["tetrad1"], tp["tetrad2"]
-        rise = tp["rise"]
-        twist = tp["twist"]
-        steps[(a, b)] = (rise, twist)
-        steps[(b, a)] = (-rise, -twist)
-    adjacency = {}
-    for a, b in steps:
-        adjacency.setdefault(a, []).append(b)
-
-    rise_values = []
-    twist_values = []
-    for start, end in zip(build_order_ids, build_order_ids[1:]):
-        interval = path_steps_between(start, end, adjacency, steps)
-        rise_values.append(format_number(sum(s[0] for s in interval)))
-        twist_values.append(format_number(sum(s[1] for s in interval)))
-
-    return {
-        "orient": orient,
-        "rise": ";".join(rise_values),
-        "twist": ";".join(twist_values),
-        "path": ";".join(remap_path_entry_to_clockwise(e) for e in path),
-    }
+    return fields
 
 
 LOOP_TYPE_MAP = {
@@ -202,6 +105,12 @@ def main():
         help="Directory containing JSON files from ElTetrado",
     )
     parser.add_argument(
+        "--g4composer-dir",
+        required=True,
+        help="Directory containing g4composer .inp files paired (by base name) "
+        "with the ElTetrado JSON files",
+    )
+    parser.add_argument(
         "--output", help="Output file for results", default="onquadro-aligner.json"
     )
     args = parser.parse_args()
@@ -209,7 +118,17 @@ def main():
     g4c_by_key = {}
     loops_by_key = {}
 
-    for json_path in glob.iglob(f"{args.directory}/*.json"):
+    inp_paths = sorted(glob.glob(f"{args.g4composer_dir}/*.inp"))
+    for inp_path in tqdm(inp_paths, desc="Preprocessing"):
+        base = os.path.splitext(os.path.basename(inp_path))[0]
+        json_path = os.path.join(args.directory, f"{base}.json")
+        if not os.path.exists(json_path):
+            continue
+
+        g4c = parse_g4composer_inp(inp_path)
+        if g4c is None:
+            continue
+
         with open(json_path) as f:
             data = json.load(f)
 
@@ -217,7 +136,6 @@ def main():
             continue
 
         nts = {nt["fullName"]: i for i, nt in enumerate(data["nucleotides"])}
-        global_index = {nt["fullName"]: nt["index"] for nt in data["nucleotides"]}
         structure = data["quadruplexDotBracket"]["structure"].replace("-", "")
 
         chains = defaultdict(list)
@@ -302,16 +220,7 @@ def main():
                 )
                 result[key].add(os.path.basename(json_path))
                 if key not in g4c_by_key:
-                    tetrad_ids = {tetrad["id"] for tetrad in tetrads}
-                    quadruplex_tetrad_pairs = [
-                        tp
-                        for tp in helix["tetradPairs"]
-                        if tp["tetrad1"] in tetrad_ids
-                        and tp["tetrad2"] in tetrad_ids
-                    ]
-                    g4c_by_key[key] = compute_g4composer(
-                        quadruplex, quadruplex_tetrad_pairs, global_index
-                    )
+                    g4c_by_key[key] = g4c
                     loops_by_key[key] = compute_loops_info(
                         quadruplex, chain_positions, chain
                     )
