@@ -678,9 +678,7 @@ def match_quadruplexes(
             desc="Processing quadruplexes",
         )
     else:
-        all_candidates_lists = [
-            process_single_item(args) for args in args_list
-        ]
+        all_candidates_lists = [process_single_item(args) for args in args_list]
 
     # Merge results — both metrics lower-is-better
     best = {}
@@ -838,7 +836,9 @@ def main():
     print_results(result)
 
     if args.output_csv:
-        pd.DataFrame(result, columns=RESULT_COLUMNS).to_csv(args.output_csv, index=False)
+        pd.DataFrame(result, columns=RESULT_COLUMNS).to_csv(
+            args.output_csv, index=False
+        )
 
     if args.g4composer_output_dir:
         write_g4composer_outputs(result, args.g4composer_output_dir)
