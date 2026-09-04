@@ -29,7 +29,15 @@ def describe(sequence, qrs):
 
 
 def parse_g4composer_inp(path):
-    """Read orient/rise/twist/path directly from a g4composer .inp file."""
+    """Read all g4composer entries from a .inp file.
+
+    An assembly with several eligible quadruplexes is exported as one file
+    with multiple concatenated entries (each starting at its own ``name``
+    line). Every entry carries its own orient/rise/twist/path, so a dict of
+    fields is returned per entry; entries missing required fields are
+    skipped. Returns an empty list when nothing usable is found.
+    """
+    entries = []
     fields = {}
     with open(path) as f:
         for line in f:
@@ -40,11 +48,50 @@ def parse_g4composer_inp(path):
             if len(parts) != 2:
                 continue
             key, value = parts
+            if key == "name" and fields:
+                if {"orient", "rise", "twist", "path"}.issubset(fields):
+                    entries.append(fields)
+                fields = {}
             if key in ("orient", "rise", "twist", "path"):
                 fields[key] = value
-    if not {"orient", "rise", "twist", "path"}.issubset(fields):
+    if {"orient", "rise", "twist", "path"}.issubset(fields):
+        entries.append(fields)
+    return entries
+
+
+def exported_g4composer_path(internal_path):
+    """Remap ElTetrado's internal (anticlockwise) path columns to the
+    g4composer clockwise numbering (columns 2 and 4 swapped, 1 and 3 kept)."""
+    swapped = {"1": "1", "2": "4", "3": "3", "4": "2"}
+    out = []
+    for entry in internal_path.split(";"):
+        label = "".join(ch for ch in entry if ch.isalpha())
+        column = "".join(ch for ch in entry if ch.isdigit())
+        if column not in swapped:
+            raise ValueError(f"Unsupported g4composer path column: {entry}")
+        out.append(label + swapped[column])
+    return ";".join(out)
+
+
+def select_g4c_entry(entries, quadruplex_path):
+    """Pick the .inp entry describing this quadruplex.
+
+    The quadruplex's own path (stored in the ElTetrado JSON, internal
+    numbering) is remapped to the exported numbering and matched against the
+    entries' paths. Assemblies with several quadruplexes produce several
+    entries with mirrored paths, so a wrong entry would silently attach
+    another quadruplex's geometry.
+    """
+    try:
+        if not isinstance(quadruplex_path, str):
+            quadruplex_path = ";".join(quadruplex_path)
+        exported = exported_g4composer_path(quadruplex_path)
+    except ValueError:
         return None
-    return fields
+    for entry in entries:
+        if entry["path"] == exported:
+            return entry
+    return None
 
 
 LOOP_TYPE_MAP = {
@@ -54,6 +101,33 @@ LOOP_TYPE_MAP = {
     "propeller+": "+p",
     "propeller-": "-p",
 }
+
+
+def path_matches_qrs(path, qrs):
+    """Check that a g4composer path describes this quadruplex's QRS pattern.
+
+    Path letters are tetrad labels and columns are tracts. A matching path
+    maps every letter to exactly one tetrad code (bijectively) and gives
+    every column exactly one nucleotide per tetrad layer. Assemblies with
+    more than one single-chain quadruplex share one .inp file whose path can
+    describe at most one of the extracted patterns; the others must not
+    inherit its geometry (orient/rise/twist/path).
+    """
+    entries = path.split(";")
+    if len(entries) != len(qrs):
+        return False
+    letter_to_code = {}
+    column_codes = {}
+    for entry, code in zip(entries, qrs):
+        label = "".join(ch for ch in entry if ch.isalpha())
+        column = "".join(ch for ch in entry if ch.isdigit())
+        if letter_to_code.setdefault(label, code) != code:
+            return False
+        column_codes.setdefault(column, set()).add(code)
+    if len(set(letter_to_code.values())) != len(letter_to_code):
+        return False
+    n_tetrads = len(qrs) // 4
+    return all(codes == set(range(1, n_tetrads + 1)) for codes in column_codes.values())
 
 
 def compute_loops_info(quadruplex, chain_positions, chain):
@@ -67,6 +141,11 @@ def compute_loops_info(quadruplex, chain_positions, chain):
     loops = quadruplex.get("loops") or []
     if len(loops) != 3 or any(loop.get("type") is None for loop in loops):
         return None
+    # A 0-nt loop (empty nucleotide list; emitted by newer ElTetrado) cannot
+    # be located from the JSON alone — leave loop info unset and let the
+    # search derive the gaps from the g4composer path instead.
+    if any(not loop.get("nucleotides") for loop in loops):
+        return None
 
     try:
         topology = "".join(LOOP_TYPE_MAP[loop["type"]] for loop in loops)
@@ -77,9 +156,7 @@ def compute_loops_info(quadruplex, chain_positions, chain):
     for tetrad in quadruplex["tetrads"]:
         for k in range(1, 5):
             tetrad_nts.append(tetrad[f"nt{k}"])
-    sorted_tetrad = sorted(
-        tetrad_nts, key=lambda nt: chain_positions[chain][nt]
-    )
+    sorted_tetrad = sorted(tetrad_nts, key=lambda nt: chain_positions[chain][nt])
 
     gaps = []
     for loop in loops:
@@ -125,8 +202,8 @@ def main():
         if not os.path.exists(json_path):
             continue
 
-        g4c = parse_g4composer_inp(inp_path)
-        if g4c is None:
+        g4c_entries = parse_g4composer_inp(inp_path)
+        if not g4c_entries:
             continue
 
         with open(json_path) as f:
@@ -146,7 +223,9 @@ def main():
         chain_positions = {}
         chain_molecules = {}
         for chain, indices in chains.items():
-            chain_sequences[chain] = [data["nucleotides"][i]["shortName"] for i in indices]
+            chain_sequences[chain] = [
+                data["nucleotides"][i]["shortName"] for i in indices
+            ]
             chain_positions[chain] = {
                 data["nucleotides"][i]["fullName"]: j for j, i in enumerate(indices)
             }
@@ -220,7 +299,19 @@ def main():
                 )
                 result[key].add(os.path.basename(json_path))
                 if key not in g4c_by_key:
-                    g4c_by_key[key] = g4c
+                    entry = None
+                    quadruplex_path = quadruplex.get("path")
+                    if quadruplex_path:
+                        entry = select_g4c_entry(g4c_entries, quadruplex_path)
+                    elif len(g4c_entries) == 1:
+                        # ElTetrado JSON without a per-quadruplex path: fall
+                        # back to the only exported entry available.
+                        entry = g4c_entries[0]
+                    g4c_by_key[key] = (
+                        entry
+                        if entry is not None and path_matches_qrs(entry["path"], qrs)
+                        else None
+                    )
                     loops_by_key[key] = compute_loops_info(
                         quadruplex, chain_positions, chain
                     )
