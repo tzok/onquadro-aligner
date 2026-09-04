@@ -20,14 +20,7 @@ def load_database(path):
         return json.load(f)
 
 
-def detect_molecule_filter(raw_sequence):
-    has_lower = any(c.islower() for c in raw_sequence if c.isalpha())
-    has_upper = any(c.isupper() for c in raw_sequence if c.isalpha())
-    if has_lower and not has_upper:
-        return "DNA"
-    if has_upper and not has_lower:
-        return "RNA"
-    return None
+MOLECULE_OPTIONS = ("RNA+DNA", "RNA", "DNA")
 
 
 def build_g4composer_content(row):
@@ -86,7 +79,12 @@ def main():
         raw_sequence = st.text_input(
             "Sequence",
             placeholder="GGGTACCCGGGTGAGGTGCGGGGT",
-            help="Uppercase = RNA, lowercase = DNA. Mixed case searches both.",
+        )
+        molecule_choice = st.selectbox(
+            "Molecule",
+            MOLECULE_OPTIONS,
+            help="Restrict the search to templates of the selected type. "
+            "RNA+DNA searches both (default).",
         )
         col1, col2 = st.columns(2)
         with col1:
@@ -121,9 +119,8 @@ def main():
             return
 
         data = load_database(DB_PATH)
-        molecule_filter = detect_molecule_filter(raw_sequence)
-        if molecule_filter:
-            data = [d for d in data if d["molecule"] == molecule_filter]
+        if molecule_choice != "RNA+DNA":
+            data = [d for d in data if d["molecule"] == molecule_choice]
 
         if tetrad_count > 0:
             tc_list = [int(tetrad_count)]

@@ -22,7 +22,7 @@ Dependencies: `biopython`, `pandas`, `streamlit`, `tqdm`.
 uv run streamlit run app.py
 ```
 
-Enter a sequence in the input field (uppercase = RNA, lowercase = DNA, mixed = search both). Results appear in a sortable table with viability indicators. Click a row to view its g4composer output and download the `.inp` file.
+Enter a sequence in the input field and pick the molecule type (RNA, DNA, or RNA+DNA; sequence case is irrelevant). Results appear in a sortable table with viability indicators. Click a row to view its g4composer output and download the `.inp` file.
 
 ### Search a sequence (CLI)
 
