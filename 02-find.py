@@ -4,7 +4,6 @@ import functools
 import itertools
 import json
 import math
-import multiprocessing
 import os
 from dataclasses import dataclass
 from typing import Optional, Union
@@ -266,12 +265,14 @@ def compute_query_loops(combination, gaps):
 
 
 def infer_gaps_from_qrs(qrs):
-    """Infer the 3 gap indices from QRS codes when loop info is unavailable.
+    """Last-resort inference of the 3 gap indices from QRS codes.
 
-    Follows each tract by tracking the QRS direction (increasing or
-    decreasing) and detecting where the pattern breaks. Works for 246/251
-    entries with loop info; the 5 mismatches involve bulges/snapbacks
-    which cannot be resolved from QRS alone.
+    Only used when neither the g4composer path (missing or inconsistent with
+    the QRS) nor ElTetrado loop annotations are available. Follows each tract
+    by tracking the QRS direction (increasing or decreasing) and detecting
+    where the pattern breaks. Assumes the canonical 3-loop fold and cannot
+    see 0-nt or same-tract-discontinuity connectors, so it misreads
+    non-canonical topologies (e.g. 8psi's twice-visited tract).
     """
     n_tetrads = max(qrs)
     gaps = []
@@ -302,15 +303,126 @@ def infer_gaps_from_qrs(qrs):
     return gaps
 
 
+def parse_g4composer_path(path):
+    """Parse a g4composer path like ``"A1;B1;B2"`` into (letters, columns).
+
+    Each entry is a tetrad label (``A``, ``B``, ...) — tetrads are labelled
+    alphabetically by 5'-most nucleotide — followed by a 1-based tract
+    (column) index. Columns are numbered clockwise with column 1 anchored at
+    the 5'-most nucleotide of tetrad A, so ``path[0] == "A1"``.
+    """
+    letters = []
+    columns = []
+    for entry in path.split(";"):
+        letters.append("".join(ch for ch in entry if ch.isalpha()))
+        columns.append(int("".join(ch for ch in entry if ch.isdigit())))
+    return letters, columns
+
+
+def path_is_consistent(letters, columns, qrs):
+    """Check that a g4composer path describes the entry's own QRS pattern.
+
+    A consistent path maps every tetrad letter to exactly one tetrad code
+    (bijectively) and gives every column exactly one nucleotide per tetrad
+    layer. Assemblies containing more than one single-chain quadruplex share
+    one ``.inp`` file, whose path can then match only one of the extracted
+    patterns — the others fail this check and must not use the path.
+    """
+    if len(letters) != len(qrs):
+        return False
+    letter_to_code = {}
+    for letter, code in zip(letters, qrs):
+        if letter_to_code.setdefault(letter, code) != code:
+            return False
+    if len(set(letter_to_code.values())) != len(letter_to_code):
+        return False
+    n_tetrads = len(qrs) // 4
+    column_codes = {}
+    for column, code in zip(columns, qrs):
+        column_codes.setdefault(column, set()).add(code)
+    return all(codes == set(range(1, n_tetrads + 1)) for codes in column_codes.values())
+
+
+def gaps_from_path(obj):
+    """Chain-discontinuity positions (loop gaps) from the g4composer path.
+
+    Consecutive template guanines are chain-continuous (stacked within one
+    tract) when they share the path column and occupy adjacent tetrad layers.
+    Every other connector is a discontinuity: either a jump between tracts (a
+    loop, possibly 0 nt long — ElTetrado does not annotate those) or a
+    snapback (a re-entry into the same tract at a non-adjacent layer).
+    Returns None when the path is unavailable or inconsistent with the
+    entry's QRS.
+    """
+    g4c = obj.get("g4c")
+    if not g4c:
+        return None
+    letters, columns = parse_g4composer_path(g4c["path"])
+    qrs = obj["qrs"]
+    if not path_is_consistent(letters, columns, qrs):
+        return None
+    return [
+        i
+        for i in range(len(columns) - 1)
+        if columns[i] != columns[i + 1] or abs(qrs[i + 1] - qrs[i]) != 1
+    ]
+
+
+def derive_topology(obj, gaps):
+    """Derive the loop-type topology string (e.g. ``"+l-p-d"``) from the path.
+
+    Mirrors ElTetrado's ``__detect_loop_type`` on the exported (clockwise)
+    path numbering: opposite columns -> diagonal; flanking nucleotides in
+    the same tetrad (letter) -> lateral; in different tetrads -> propeller.
+    The d/l/p letters are validated exact on 729/729 annotated loops. The
+    sign of every non-diagonal loop is a pure function of the column delta:
+    the loop is ``+`` when the 3'-flanking column is the clockwise-next of
+    the 5'-flanking one (exported delta 3) and ``-`` when it is the
+    anticlockwise-next (exported delta 1). ElTetrado derives the column
+    order in 3D from the helix axis (column 1 anchored at the first-ever
+    tetrad G), so only the axis handedness matters. The current corpus
+    annotations deviate for 20 entries whose older JSONs used the opposite
+    handedness (58 propeller + 6 lateral signs, always all-or-nothing per
+    entry); they follow the new convention after the next JSON rebuild.
+
+    Only non-empty template connectors (required loops) are typed, in gap
+    order; returns None when the required loops are not exactly three
+    typable cross-tract loops (snapbacks — same-tract re-entries — are
+    untypable, as in ElTetrado).
+    """
+    g4c = obj.get("g4c")
+    if not g4c:
+        return None
+    description = obj["description"]
+    required = [gap for gap in gaps if description[gap + 1] != ""]
+    if len(required) != 3:
+        return None
+    letters, columns = parse_g4composer_path(g4c["path"])
+    types = []
+    for gap in required:
+        if columns[gap] == columns[gap + 1]:
+            return None
+        delta = (columns[gap + 1] - columns[gap]) % 4
+        if delta == 2:
+            types.append("d")
+        else:
+            sign = "+" if delta == 1 else "-"
+            kind = "l" if letters[gap] == letters[gap + 1] else "p"
+            types.append(f"{sign}{kind}")
+    return "".join(types)
+
+
 def assess_viability(obj, combination, n_tetrads):
     """Return (viability_label, loop_lengths_str, topology_str, zero_count)."""
     loops = obj.get("loops")
-    if loops:
+    topology = loops["topology"] if loops else ""
+    description = obj["description"]
+
+    gaps = gaps_from_path(obj)
+    if gaps is None and loops:
         gaps = loops["gaps"]
-        topology = loops["topology"]
-    else:
+    if gaps is None:
         gaps = infer_gaps_from_qrs(obj["qrs"])
-        topology = ""
         if len(gaps) != 3:
             return "n/a", "", "", 0
 
@@ -318,13 +430,35 @@ def assess_viability(obj, combination, n_tetrads):
     if lengths is None:
         return "not_viable", "", topology, 0
     lengths_str = "-".join(str(length) for length in lengths)
-    zero_count = sum(1 for length in lengths if length == 0)
-    if any(length < 1 for length in lengths):
+
+    # A 0-nt query connector violates the fold only where the template's own
+    # connector carries nucleotides (a loop the query failed to supply).
+    # Faithfully reproducing a template's native 0-nt connector (snapback)
+    # is allowed and does not count as a zero-length loop.
+    zero_count = sum(
+        1
+        for gap, length in zip(gaps, lengths)
+        if length == 0 and description[gap + 1] != ""
+    )
+    if zero_count:
         return "not_viable", lengths_str, topology, zero_count
-    if not loops:
-        return "unknown", lengths_str, topology, zero_count
-    label = viability(lengths[0], lengths[1], lengths[2], topology, n_tetrads)
-    return label, lengths_str, topology, zero_count
+
+    # The 3-loop viability rules need a canonical fold: exactly three
+    # required (non-empty template) loops, and every native 0-nt template
+    # connector reproduced faithfully (0 nt in the query too).
+    required_lengths = [
+        length for gap, length in zip(gaps, lengths) if description[gap + 1] != ""
+    ]
+    faithful = all(
+        length == 0 for gap, length in zip(gaps, lengths) if description[gap + 1] == ""
+    )
+    if len(required_lengths) == 3 and faithful:
+        if not topology:
+            topology = derive_topology(obj, gaps) or ""
+        if topology:
+            label = viability(*required_lengths, topology, n_tetrads)
+            return label, lengths_str, topology, zero_count
+    return "unknown", lengths_str, topology, zero_count
 
 
 @functools.cache
