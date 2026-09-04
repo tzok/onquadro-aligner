@@ -18,6 +18,7 @@ RESULT_COLUMNS = [
     "Tetrad count",
     "Molecule",
     "Tract distance",
+    "Bulges",
     "Linker distance",
     "Viability",
     "Loop lengths",
@@ -708,6 +709,7 @@ def write_g4composer_outputs(result, output_dir):
 
         score_line = (
             f"# tract_distance={row['Tract distance']} "
+            f"bulges={row['Bulges']} "
             f"linker_distance={row['Linker distance']} "
             f"viability={row['Viability']}"
         )
@@ -831,6 +833,7 @@ def match_quadruplexes(
         v_label, v_lengths, v_topology, zero_count = assess_viability(
             obj, combination, n
         )
+        bulges = obj.get("bulges") or [0, 0, 0, 0]
 
         result.append(
             {
@@ -838,6 +841,8 @@ def match_quadruplexes(
                 "Tetrad count": n,
                 "Molecule": obj["molecule"],
                 "Tract distance": score_tract,
+                "Bulges": "-".join(str(count) for count in bulges),
+                "bulge_sum": sum(bulges),
                 "Linker distance": linker_distance,
                 "Viability": v_label,
                 "Loop lengths": v_lengths,
@@ -957,14 +962,11 @@ def main():
     )
     result.sort(
         key=lambda row: (
-            0
-            if row["Tract distance"] == 0
-            and row["Linker distance"] == 0
-            and row.get("zero_count", 0) == 0
-            else 1,
+            0 if row["Tract distance"] == 0 and row["Linker distance"] == 0 else 1,
             VIABILITY_RANK.get(row["Viability"], 2),
             row["Tract distance"],
-            row["Linker distance"] + row.get("zero_count", 0) * 1000,
+            row["bulge_sum"],
+            row["Linker distance"],
         )
     )
     print_results(result)

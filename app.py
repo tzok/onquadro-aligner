@@ -154,14 +154,11 @@ def main():
 
         result.sort(
             key=lambda row: (
-                0
-                if row["Tract distance"] == 0
-                and row["Linker distance"] == 0
-                and row.get("zero_count", 0) == 0
-                else 1,
+                0 if row["Tract distance"] == 0 and row["Linker distance"] == 0 else 1,
                 find.VIABILITY_RANK.get(row["Viability"], 2),
                 row["Tract distance"],
-                row["Linker distance"] + row.get("zero_count", 0) * 1000,
+                row["bulge_sum"],
+                row["Linker distance"],
             )
         )
         st.session_state.search_result = result
@@ -181,6 +178,7 @@ def main():
                 else "",
                 "Viability": f"{VIABILITY_COLORS.get(row['Viability'], '⚪')} {row['Viability']}",
                 "Tract": row["Tract distance"],
+                "Bulges": row["Bulges"],
                 "Linker": row["Linker distance"],
                 "Tetrads": row["Tetrad count"],
                 "Template": row["template"],
@@ -203,6 +201,7 @@ def main():
             "Perfect": st.column_config.TextColumn(width="small"),
             "Viability": st.column_config.TextColumn(width="medium"),
             "Tract": st.column_config.NumberColumn(width="small"),
+            "Bulges": st.column_config.TextColumn(width="small"),
             "Linker": st.column_config.NumberColumn(width="small"),
             "Tetrads": st.column_config.NumberColumn(width="small"),
             "Template": st.column_config.TextColumn(width="medium"),
