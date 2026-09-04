@@ -175,6 +175,23 @@ def compute_loops_info(quadruplex, chain_positions, chain):
     return {"topology": topology, "gaps": gaps}
 
 
+def bulges_per_column(path, qrs, description):
+    """Bulged-nucleotide counts per tract column.
+
+    A stack connector (same tract column, adjacent tetrad codes — i.e. not a
+    loop or snapback gap) whose description segment is non-empty carries
+    bulged nucleotides; they are attributed to the connector's column. The
+    returned list has one count per tract column, so summing it gives the
+    template's total bulged nucleotides."""
+    numbers = [int(entry[1:]) for entry in path.split(";")]
+    bulges = [0] * 4
+    for i in range(len(numbers) - 1):
+        stacked = numbers[i] == numbers[i + 1] and abs(qrs[i + 1] - qrs[i]) == 1
+        if stacked and description[i + 1]:
+            bulges[numbers[i] - 1] += len(description[i + 1])
+    return bulges
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -193,6 +210,7 @@ def main():
     args = parser.parse_args()
     result = defaultdict(set)
     g4c_by_key = {}
+    bulges_by_key = {}
     loops_by_key = {}
 
     inp_paths = sorted(glob.glob(f"{args.g4composer_dir}/*.inp"))
@@ -307,11 +325,15 @@ def main():
                         # ElTetrado JSON without a per-quadruplex path: fall
                         # back to the only exported entry available.
                         entry = g4c_entries[0]
-                    g4c_by_key[key] = (
-                        entry
-                        if entry is not None and path_matches_qrs(entry["path"], qrs)
-                        else None
-                    )
+                    if entry is not None and not path_matches_qrs(entry["path"], qrs):
+                        entry = None
+                    g4c_by_key[key] = entry
+                    if entry is not None:
+                        bulges_by_key[key] = bulges_per_column(
+                            entry["path"], qrs, description
+                        )
+                    else:
+                        bulges_by_key[key] = [0, 0, 0, 0]
                     loops_by_key[key] = compute_loops_info(
                         quadruplex, chain_positions, chain
                     )
@@ -326,6 +348,7 @@ def main():
                 "description": description,
                 "filenames": sorted(filenames),
                 "g4c": g4c_by_key[(molecule, qrs, qrs_chars, description)],
+                "bulges": bulges_by_key[(molecule, qrs, qrs_chars, description)],
                 "loops": loops_by_key[(molecule, qrs, qrs_chars, description)],
             }
         )
