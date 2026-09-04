@@ -65,16 +65,16 @@ uv run ./02-find.py GGTTGGCGCGAAGCATTCGCGGGTTGG --tetrad-count 2 --g4composer-ou
 Writes one `.inp` file per matched template, named `{rank}-{template}.inp` where `{rank}` is the zero-padded position of the match in the sorted result list (best match = `0`), so files sort by overall match quality. The sort key is `(perfect, viability, tract distance, linker distance)`, so `{rank}` encodes all components in a single number. Each file is a valid g4composer input describing the **query sequence** folded into the matched template's geometry:
 
 ``` text
-# tract_distance=0 linker_distance=0 viability=unknown loop_lengths=6-1-3 topology=d-p-l template=5zev-assembly1
-name        5zev-assembly1
-sequence    gggtacccgggtgaggtgcggggt
-structure   ^^......^^^.^.^^...^^^^.
-chi         ........................
-sugar       ........................
-orient      A-;B+;C-
-rise        -2.9;6.3
-twist       -43.9;75.6
-path        A1;B1;B3;A3;C3;B2;A2;C2;C1;B4;A4;C4
+# tract_distance=0 linker_distance=0 viability=not_viable loop_lengths=2-15-2 topology=+l+l+l template=2m8z-assembly1
+name        2m8z-assembly1
+sequence    ggttggcgcgaagcattcgcgggttgg
+structure   ^^..^^...............^^..^^
+chi         ...........................
+sugar       ...........................
+orient      A+;B-
+rise        3.9
+twist       19.2
+path        A1;B1;B2;A2;A3;B3;B4;A4
 ```
 
 The `# score` line prepends the aligner's tract distance, linker score, and **viability** assessment. `sequence` and `structure` describe the query (DNA lowercase, RNA uppercase; `^` marks the matched tetrad Gs). `orient`, `rise`, `twist`, and `path` come from the reference template and are reconstructed from the ElTetrado JSON during preprocessing — no 3D coordinates required.
@@ -99,9 +99,11 @@ Each match is assessed for **topological viability** based on rules from two stu
 
 **Caveats**: the rules are derived from structural studies of DNA G4s, mostly with thymidine-only loops and no flanking residues. They are applied to query loop **lengths** regardless of composition — non-T loops and flanking sequences can shift conformational preferences (e.g. via base-pair or base-triple formation within loops). Parallel structures resolved in PEG/crowding conditions were excluded from Table 3, so parallel topologies may be underrepresented.
 
-For templates whose ElTetrado JSON lacked usable loop annotations, loop gap positions are inferred from the QRS tract pattern instead (works for the vast majority of cases); such matches are labeled `unknown` rather than `n/a` unless a 0-nt loop is detected.
+**Loop positions and lengths**: loop positions come from the template's g4composer `path`, which pins every tetrad G to a tract (column) and a tetrad (letter). Two consecutive template Gs are chain-continuous (stacked) when they share the tract and occupy adjacent tetrad layers; every other connector is a chain discontinuity — a loop between tracts, or a re-entry into the same tract (snapback-like). Non-canonical folds (the chain visiting a tract more than once) therefore have **more than three loops**, and `loop_lengths` lists one length per connector, e.g. `2-2-1-0` for a four-loop fold. For templates whose path is unavailable (see below), loop gaps fall back to ElTetrado annotations and finally to a heuristic inference from the QRS pattern.
 
-**0-nt loops**: a 0-nt loop (two tetrad Gs directly adjacent, no linker) is structurally exceptional — it requires a discontinuity (snapback) before one of the two guanosines, which this tool does not model. Matches containing a 0-nt loop are always marked `not_viable` and are penalized in the ranking (pushed after all non-zero-loop matches within the same viability/tract-distance tier), even if they would otherwise be a "perfect" (tract distance = 0, linker distance = 0) match.
+**Topology derivation**: for templates without ElTetrado loop-type annotations, the topology (propeller/lateral/diagonal per loop) is derived from the path by mirroring ElTetrado's own classification: opposite tracts → diagonal, flanking nucleotides in the same tetrad → lateral, otherwise propeller. The +/− sign is a pure function of the columns connected (ElTetrado anchors column 1 in 3D and derives the rest around the helix axis): `+` when the 3'-flanking tract is the clockwise-next of the 5'-flanking one, `−` when it is the anticlockwise-next. Path-derived signs agree with the ElTetrado annotations on the whole corpus. Sign subtypes never observed in the ASC-G4 scheme (e.g. `9b`, `7b`, `5b`, `4a` — four corpus entries) carry no common topology name.
+
+**0-nt loops**: a 0-nt connector (two tetrad Gs directly adjacent) is structurally exceptional where the template itself requires nucleotides there — the query then failed to supply a loop the fold needs. Such matches are always marked `not_viable` and penalized in the ranking (+1000 per violation on linker distance), even if they would otherwise be a "perfect" match. A template may also contain *native* 0-nt connectors (snapbacks — a chain re-entering its own tract); reproducing those faithfully with 0 nt is allowed — the length still shows up in `loop_lengths` (e.g. `6-1-3-0`), but without a penalty.
 
 ### Rebuild the database
 
@@ -113,13 +115,13 @@ The input directory should contain ElTetrado JSON output files (one per PDB asse
 
 ## How it works
 
-1. **Preprocessing** (`01-preprocess.py`) — Reads ElTetrado JSON files, extracts single-chain all-G quadruplexes, and deduplicates them into a compact pattern database. Each entry stores the QRS codes, QRS characters, linker descriptions (tract sequences between tetrads), source filenames, a `g4c` field with g4composer geometry (`orient`, `rise`, `twist`, `path`) reconstructed from the ElTetrado JSON topology, and a `loops` field with loop topology and gap indices for viability scoring.
+1. **Preprocessing** (`01-preprocess.py`) — Reads ElTetrado JSON files, extracts single-chain all-G quadruplexes, and deduplicates them into a compact pattern database. Each entry stores the QRS codes, QRS characters, linker descriptions (tract sequences between tetrads), source filenames, a `g4c` field with g4composer geometry (`orient`, `rise`, `twist`, `path`) read from the paired `.inp` file (attached only when the `.inp` path is consistent with the entry's own QRS — assemblies containing several single-chain quadruplexes share one `.inp`), and a `loops` field with the ElTetrado loop topology and gap indices (only for canonical 3-loop folds).
 
-2. **Search** (`02-find.py`) — Takes a nucleotide sequence, identifies G positions, and searches for the best-scoring combination of Gs to match against each database pattern, trying every tetrad count the database supports by default (not just the maximum the query's G count could support) so that fewer-tetrad templates aren't missed. By default this uses a dynamic-programming search that is mathematically equivalent to trying every combination but runs in polynomial instead of combinatorial time (see [search-algorithm.md](search-algorithm.md) for a detailed explanation); the exhaustive combinatorial search is still available via `--brute-force` for verification. Each match is scored for topological viability from the query's inferred loop lengths and the template's loop topology. Two distance metrics are used: **tract distance** (extra nucleotides in tracts) and **linker distance** (edit distance between linker sequences, penalizing mismatches, gaps, and missing/extra linkers). Perfect matches (both distances = 0) are ranked first; all others are sorted by viability, then by tract distance, then by linker distance. Searches in parallel across all CPU cores. When `--g4composer-output-dir` is set, writes one `.inp` file per matched template using the query sequence and the template's geometry.
+2. **Search** (`02-find.py`) — Takes a nucleotide sequence, identifies G positions, and searches for the best-scoring combination of Gs to match against each database pattern, trying every tetrad count the database supports by default (not just the maximum the query's G count could support) so that fewer-tetrad templates aren't missed. By default this uses a dynamic-programming search that is mathematically equivalent to trying every combination but runs in polynomial instead of combinatorial time (see [search-algorithm.md](search-algorithm.md) for a detailed explanation); the exhaustive combinatorial search is still available via `--brute-force` for verification. Each match is scored for topological viability from the query's loop lengths at every chain-discontinuity connector of the template, together with the template's loop topology (annotated by ElTetrado or derived from the path). Two distance metrics are used: **tract distance** (extra nucleotides in tracts) and **linker distance** (edit distance between linker sequences, penalizing mismatches, gaps, and missing/extra linkers). Perfect matches (both distances = 0) are ranked first; all others are sorted by viability, then by tract distance, then by linker distance. Searches in parallel across all CPU cores. When `--g4composer-output-dir` is set, writes one `.inp` file per matched template using the query sequence and the template's geometry.
 
 ## Database
 
-The pre-built `onquadro-aligner.json` contains **327** unique single-chain G-quadruplex patterns extracted from the ElTetrado corpus. Includes only quadruplexes that:
+The pre-built `onquadro-aligner.json` contains **340** unique single-chain G-quadruplex patterns extracted from the ElTetrado corpus. Includes only quadruplexes that:
 
 - Span a single chain (no inter-chain quadruplexes)
 - Contain exclusively G-tetrads
