@@ -7,7 +7,9 @@ import streamlit as st
 
 DB_PATH = os.path.join(os.path.dirname(__file__), "onquadro-aligner.json")
 
-spec = importlib.util.spec_from_file_location("find", os.path.join(os.path.dirname(__file__), "02-find.py"))
+spec = importlib.util.spec_from_file_location(
+    "find", os.path.join(os.path.dirname(__file__), "02-find.py")
+)
 find = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(find)
 
@@ -112,7 +114,9 @@ def main():
         max_tetrad_count = len(g_indices) // 4
 
         if max_tetrad_count == 0:
-            st.warning("Sequence contains fewer than 4 G's — cannot form a G-quadruplex.")
+            st.warning(
+                "Sequence contains fewer than 4 G's — cannot form a G-quadruplex."
+            )
             st.session_state.pop("search_result", None)
             return
 
@@ -175,7 +179,9 @@ def main():
         display_rows.append(
             {
                 "": i,
-                "Perfect": "✅" if row["Tract distance"] == 0 and row["Linker distance"] == 0 else "",
+                "Perfect": "✅"
+                if row["Tract distance"] == 0 and row["Linker distance"] == 0
+                else "",
                 "Viability": f"{VIABILITY_COLORS.get(row['Viability'], '⚪')} {row['Viability']}",
                 "Tract": row["Tract distance"],
                 "Linker": row["Linker distance"],
